@@ -136,7 +136,7 @@ struct ContentView: View {
 
     private var navigationMenu: some View {
         HStack(spacing: 8) {
-            ForEach(AppModule.allCases, id: \.self) { module in
+            ForEach(AppModule.navigationModules, id: \.self) { module in
                 NavigationItem(
                     module: module,
                     isActive: coordinator.currentModule == module

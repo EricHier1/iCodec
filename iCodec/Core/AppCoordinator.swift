@@ -38,6 +38,10 @@ enum AppModule: String, CaseIterable {
     case audio = "AUDIO"
     case settings = "SETTINGS"
 
+    static var navigationModules: [AppModule] {
+        [.mission, .map, .intel, .alerts, .audio]
+    }
+
     var glyph: String {
         switch self {
         case .mission: return "OBJ"

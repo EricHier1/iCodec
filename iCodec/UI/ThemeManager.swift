@@ -4,21 +4,87 @@ import Combine
 @MainActor
 class ThemeManager: ObservableObject {
     @Published var currentTheme: CodecTheme = .tactical
+    @Published var customPalette = CustomThemePalette()
 
-    var primaryColor: Color { currentTheme.primaryColor }
-    var secondaryColor: Color { currentTheme.secondaryColor }
-    var accentColor: Color { currentTheme.accentColor }
-    var backgroundColor: Color { currentTheme.backgroundColor }
-    var surfaceColor: Color { currentTheme.surfaceColor }
-    var textColor: Color { currentTheme.textColor }
-    var successColor: Color { currentTheme.successColor }
-    var warningColor: Color { currentTheme.warningColor }
-    var errorColor: Color { currentTheme.errorColor }
+    private var currentPalette: ThemePalette {
+        palette(for: currentTheme)
+    }
+
+    var primaryColor: Color { currentPalette.primary }
+    var secondaryColor: Color { currentPalette.secondary }
+    var accentColor: Color { currentPalette.accent }
+    var backgroundColor: Color { currentPalette.background }
+    var surfaceColor: Color { currentPalette.surface }
+    var textColor: Color { currentPalette.text }
+    var successColor: Color { currentPalette.success }
+    var warningColor: Color { currentPalette.warning }
+    var errorColor: Color { currentPalette.error }
 
     func switchTheme(to theme: CodecTheme) {
         withAnimation(.easeInOut(duration: 0.3)) {
             currentTheme = theme
         }
+    }
+
+    @discardableResult
+    func applyCustomPalette(primaryHex: String, secondaryHex: String, accentHex: String) -> Bool {
+        guard let normalizedPrimary = Self.normalizeHex(primaryHex),
+              let normalizedSecondary = Self.normalizeHex(secondaryHex),
+              let normalizedAccent = Self.normalizeHex(accentHex) else {
+            return false
+        }
+
+        customPalette = CustomThemePalette(
+            primaryHex: normalizedPrimary,
+            secondaryHex: normalizedSecondary,
+            accentHex: normalizedAccent
+        )
+
+        return true
+    }
+
+    func palette(for theme: CodecTheme) -> ThemePalette {
+        switch theme {
+        case .tactical:
+            return ThemePalette.makeDefault(
+                primary: Color(red: 0.0, green: 0.8, blue: 0.0),
+                secondary: Color(red: 0.0, green: 0.4, blue: 0.0),
+                accent: Color(red: 0.2, green: 1.0, blue: 0.2)
+            )
+        case .night:
+            return ThemePalette.makeDefault(
+                primary: Color(red: 0.0, green: 0.6, blue: 0.8),
+                secondary: Color(red: 0.0, green: 0.3, blue: 0.4),
+                accent: Color(red: 0.2, green: 0.8, blue: 1.0)
+            )
+        case .infrared:
+            return ThemePalette.makeDefault(
+                primary: Color(red: 1.0, green: 0.4, blue: 0.0),
+                secondary: Color(red: 0.6, green: 0.2, blue: 0.0),
+                accent: Color(red: 1.0, green: 0.6, blue: 0.2)
+            )
+        case .custom:
+            return ThemePalette.makeDefault(
+                primary: customPalette.primaryColor,
+                secondary: customPalette.secondaryColor,
+                accent: customPalette.accentColor
+            )
+        }
+    }
+
+    static func normalizeHex(_ hex: String) -> String? {
+        var cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+
+        if cleaned.hasPrefix("#") {
+            cleaned.removeFirst()
+        }
+
+        guard cleaned.count == 6 || cleaned.count == 8,
+              UInt64(cleaned, radix: 16) != nil else {
+            return nil
+        }
+
+        return "#" + cleaned
     }
 }
 
@@ -26,72 +92,10 @@ enum CodecTheme: CaseIterable {
     case tactical
     case night
     case infrared
-    case arctic
-    case sunset
-    case purple
+    case custom
 
-    var primaryColor: Color {
-        switch self {
-        case .tactical: return Color(red: 0.0, green: 0.8, blue: 0.0)  // Green
-        case .night: return Color(red: 0.0, green: 0.6, blue: 0.8)     // Blue
-        case .infrared: return Color(red: 1.0, green: 0.4, blue: 0.0)  // Orange
-        case .arctic: return Color(red: 0.0, green: 0.8, blue: 0.9)    // Cyan
-        case .sunset: return Color(red: 1.0, green: 0.6, blue: 0.8)    // Pink
-        case .purple: return Color(red: 0.7, green: 0.3, blue: 1.0)    // Purple
-        }
-    }
-
-    var secondaryColor: Color {
-        switch self {
-        case .tactical: return Color(red: 0.0, green: 0.4, blue: 0.0)   // Dark Green
-        case .night: return Color(red: 0.0, green: 0.3, blue: 0.4)      // Dark Blue
-        case .infrared: return Color(red: 0.6, green: 0.2, blue: 0.0)   // Dark Orange
-        case .arctic: return Color(red: 0.0, green: 0.4, blue: 0.5)     // Dark Cyan
-        case .sunset: return Color(red: 0.6, green: 0.3, blue: 0.4)     // Dark Pink
-        case .purple: return Color(red: 0.4, green: 0.2, blue: 0.6)     // Dark Purple
-        }
-    }
-
-    var accentColor: Color {
-        switch self {
-        case .tactical: return Color(red: 0.2, green: 1.0, blue: 0.2)   // Bright Green
-        case .night: return Color(red: 0.2, green: 0.8, blue: 1.0)      // Bright Blue
-        case .infrared: return Color(red: 1.0, green: 0.6, blue: 0.2)   // Bright Orange
-        case .arctic: return Color(red: 0.3, green: 1.0, blue: 1.0)     // Bright Cyan
-        case .sunset: return Color(red: 1.0, green: 0.8, blue: 0.9)     // Bright Pink
-        case .purple: return Color(red: 0.9, green: 0.5, blue: 1.0)     // Bright Purple
-        }
-    }
-
-    var backgroundColor: Color {
-        Color.black
-    }
-
-    var surfaceColor: Color {
-        Color(red: 0.05, green: 0.05, blue: 0.05)
-    }
-
-    var textColor: Color {
-        primaryColor
-    }
-
-    var successColor: Color {
-        switch self {
-        case .tactical: return Color(red: 0.0, green: 0.8, blue: 0.0)   // Green
-        case .night: return Color(red: 0.2, green: 0.8, blue: 1.0)      // Blue
-        case .infrared: return Color(red: 1.0, green: 0.6, blue: 0.2)   // Orange
-        case .arctic: return Color(red: 0.3, green: 1.0, blue: 1.0)     // Cyan
-        case .sunset: return Color(red: 1.0, green: 0.8, blue: 0.9)     // Pink
-        case .purple: return Color(red: 0.9, green: 0.5, blue: 1.0)     // Purple
-        }
-    }
-
-    var warningColor: Color {
-        Color(red: 1.0, green: 0.8, blue: 0.0)  // Universal warning yellow
-    }
-
-    var errorColor: Color {
-        Color(red: 1.0, green: 0.2, blue: 0.2)  // Universal error red
+    static var allCases: [CodecTheme] {
+        [.tactical, .night, .infrared, .custom]
     }
 
     var name: String {
@@ -99,9 +103,7 @@ enum CodecTheme: CaseIterable {
         case .tactical: return "Tactical"
         case .night: return "Night Vision"
         case .infrared: return "Thermal"
-        case .arctic: return "Arctic"
-        case .sunset: return "Sunset"
-        case .purple: return "Phantom"
+        case .custom: return "Custom"
         }
     }
 
@@ -110,9 +112,80 @@ enum CodecTheme: CaseIterable {
         case .tactical: return "Classic green tactical HUD"
         case .night: return "Blue night vision mode"
         case .infrared: return "Orange thermal imaging"
-        case .arctic: return "Cyan cold weather ops"
-        case .sunset: return "Pink/magenta aesthetic"
-        case .purple: return "Purple stealth mode"
+        case .custom: return "Define primary, secondary, and accent hex colors"
         }
+    }
+}
+
+struct ThemePalette {
+    let primary: Color
+    let secondary: Color
+    let accent: Color
+    let background: Color
+    let surface: Color
+    let text: Color
+    let success: Color
+    let warning: Color
+    let error: Color
+
+    static func makeDefault(primary: Color, secondary: Color, accent: Color) -> ThemePalette {
+        ThemePalette(
+            primary: primary,
+            secondary: secondary,
+            accent: accent,
+            background: Color.black,
+            surface: Color(red: 0.05, green: 0.05, blue: 0.05),
+            text: primary,
+            success: accent,
+            warning: Color(red: 1.0, green: 0.8, blue: 0.0),
+            error: Color(red: 1.0, green: 0.2, blue: 0.2)
+        )
+    }
+}
+
+struct CustomThemePalette: Equatable {
+    var primaryHex: String
+    var secondaryHex: String
+    var accentHex: String
+
+    init(primaryHex: String = "#00F900", secondaryHex: String = "#005B2A", accentHex: String = "#3AFF74") {
+        self.primaryHex = primaryHex
+        self.secondaryHex = secondaryHex
+        self.accentHex = accentHex
+    }
+
+    var primaryColor: Color { Color(hex: primaryHex) ?? Color(red: 0.0, green: 0.8, blue: 0.0) }
+    var secondaryColor: Color { Color(hex: secondaryHex) ?? Color(red: 0.0, green: 0.4, blue: 0.0) }
+    var accentColor: Color { Color(hex: accentHex) ?? Color(red: 0.2, green: 1.0, blue: 0.2) }
+}
+
+extension Color {
+    init?(hex: String) {
+        var cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+
+        if cleaned.hasPrefix("#") {
+            cleaned.removeFirst()
+        }
+
+        guard cleaned.count == 6 || cleaned.count == 8,
+              let value = UInt64(cleaned, radix: 16) else {
+            return nil
+        }
+
+        let r, g, b, a: Double
+
+        if cleaned.count == 6 {
+            r = Double((value & 0xFF0000) >> 16) / 255.0
+            g = Double((value & 0x00FF00) >> 8) / 255.0
+            b = Double(value & 0x0000FF) / 255.0
+            a = 1.0
+        } else {
+            r = Double((value & 0xFF000000) >> 24) / 255.0
+            g = Double((value & 0x00FF0000) >> 16) / 255.0
+            b = Double((value & 0x0000FF00) >> 8) / 255.0
+            a = Double(value & 0x000000FF) / 255.0
+        }
+
+        self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
 }
