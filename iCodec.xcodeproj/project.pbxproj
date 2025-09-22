@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -30,13 +30,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1A00000F000000000000001 /* iCodec.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iCodec.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A000002000000000000001 /* iCodecApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iCodecApp.swift; sourceTree = "<group>"; };
 		1A000004000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1A000006000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A000008000000000000001 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		1A00000B000000000000001 /* iCodec.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = iCodec.xcdatamodel; sourceTree = "<group>"; };
 		1A00000C000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A00000F000000000000001 /* iCodec.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iCodec.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A000021000000000000001 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
 		1A000023000000000000001 /* BaseViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseViewModel.swift; sourceTree = "<group>"; };
 		1A000025000000000000001 /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
@@ -65,22 +65,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1A00000E000000000000001 = {
-			isa = PBXGroup;
-			children = (
-				1A000001000000000000002 /* iCodec */,
-				1A000010000000000000001 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		1A000010000000000000001 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				1A00000F000000000000001 /* iCodec.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		1A000001000000000000002 /* iCodec */ = {
 			isa = PBXGroup;
 			children = (
@@ -99,12 +83,20 @@
 			path = iCodec;
 			sourceTree = "<group>";
 		};
-		1A000016000000000000001 /* Preview Content */ = {
+		1A00000E000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				1A000008000000000000001 /* Preview Assets.xcassets */,
+				1A000001000000000000002 /* iCodec */,
+				1A000010000000000000001 /* Products */,
 			);
-			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		1A000010000000000000001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A00000F000000000000001 /* iCodec.app */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		1A000011000000000000001 /* Core */ = {
@@ -130,6 +122,37 @@
 				1A000048000000000000001 /* Settings */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		1A000013000000000000001 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		1A000014000000000000001 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				1A000027000000000000001 /* ThemeManager.swift */,
+				1A000049000000000000001 /* Components */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		1A000015000000000000001 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		1A000016000000000000001 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				1A000008000000000000001 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
 			sourceTree = "<group>";
 		};
 		1A000041000000000000001 /* HUD */ = {
@@ -197,22 +220,6 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
-		1A000013000000000000001 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		1A000014000000000000001 /* UI */ = {
-			isa = PBXGroup;
-			children = (
-				1A000027000000000000001 /* ThemeManager.swift */,
-				1A000049000000000000001 /* Components */,
-			);
-			path = UI;
-			sourceTree = "<group>";
-		};
 		1A000049000000000000001 /* Components */ = {
 			isa = PBXGroup;
 			children = (
@@ -220,13 +227,6 @@
 				1A00002B000000000000001 /* HUDPanel.swift */,
 			);
 			path = Components;
-			sourceTree = "<group>";
-		};
-		1A000015000000000000001 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -257,7 +257,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1601;
-				LastUpgradeCheck = 1601;
+				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					1A00000E000000000000002 = {
 						CreatedOnToolsVersion = 15.0;
@@ -381,6 +381,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -437,6 +438,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -541,7 +543,6 @@
 			versionGroupType = wrapper.xcdatamodel;
 		};
 /* End XCVersionGroup section */
-
 	};
 	rootObject = 1A00000F000000000000002 /* Project object */;
 }

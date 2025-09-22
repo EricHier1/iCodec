@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreData
 
 struct MissionView: View {
     @StateObject private var viewModel = MissionViewModel()
@@ -83,6 +84,11 @@ struct MissionView: View {
                             viewModel.setCurrentMission(mission)
                         }
                 }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        viewModel.deleteMission(viewModel.missions[index])
+                    }
+                }
 
                 if viewModel.missions.isEmpty {
                     Text("No missions scheduled")
@@ -114,7 +120,7 @@ struct MissionCard: View {
                 priorityIndicator
             }
 
-            if let description = mission.missionDescription {
+            if let description = mission.missionDescription, !description.isEmpty {
                 Text(description)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(themeManager.textColor.opacity(0.8))
@@ -285,14 +291,73 @@ class MissionViewModel: BaseViewModel {
     @Published var currentMission: Mission?
     @Published var showNewMissionDialog = false
 
+    private let persistenceController = PersistenceController.shared
+
+    override init() {
+        super.init()
+        fetchMissions()
+    }
+
+    func fetchMissions() {
+        let request: NSFetchRequest<Mission> = Mission.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Mission.timestamp, ascending: false)]
+
+        do {
+            missions = try persistenceController.container.viewContext.fetch(request)
+        } catch {
+            print("Error fetching missions: \(error)")
+        }
+    }
+
     func createMission(title: String, description: String, priority: Priority, progress: Double) {
-        // This would normally use Core Data
-        // For now, we'll just simulate mission creation
-        print("Creating mission: \(title)")
+        let context = persistenceController.container.viewContext
+        let newMission = Mission(context: context)
+
+        newMission.id = UUID()
+        newMission.name = title
+        newMission.missionDescription = description
+        newMission.priority = priority.rawValue
+        newMission.progress = progress
+        newMission.status = "pending"
+        newMission.timestamp = Date()
+
+        do {
+            try context.save()
+            fetchMissions()
+        } catch {
+            print("Error saving mission: \(error)")
+        }
     }
 
     func setCurrentMission(_ mission: Mission) {
         currentMission = mission
+    }
+
+    func updateMissionProgress(_ mission: Mission, progress: Double) {
+        let context = persistenceController.container.viewContext
+        mission.progress = progress
+
+        do {
+            try context.save()
+            fetchMissions()
+        } catch {
+            print("Error updating mission progress: \(error)")
+        }
+    }
+
+    func deleteMission(_ mission: Mission) {
+        let context = persistenceController.container.viewContext
+        context.delete(mission)
+
+        do {
+            try context.save()
+            fetchMissions()
+            if currentMission == mission {
+                currentMission = nil
+            }
+        } catch {
+            print("Error deleting mission: \(error)")
+        }
     }
 }
 
@@ -312,17 +377,3 @@ enum Priority: String, CaseIterable {
     }
 }
 
-// Extension to add missionDescription to Mission
-extension Mission {
-    var missionDescription: String? {
-        get { return "Mission objectives and details..." }
-    }
-
-    var priority: String? {
-        get { return "medium" }
-    }
-
-    var progress: Double {
-        get { return 0.0 }
-    }
-}
