@@ -37,6 +37,9 @@ struct MissionView: View {
         .sheet(isPresented: $viewModel.showNewMissionDialog) {
             NewMissionSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showEditMissionDialog) {
+            EditMissionSheet(viewModel: viewModel)
+        }
     }
 
     private var currentMissionSection: some View {
@@ -77,17 +80,23 @@ struct MissionView: View {
                 .foregroundColor(themeManager.accentColor)
                 .fontWeight(.bold)
 
-            LazyVStack(spacing: 8) {
+            VStack(spacing: 8) {
                 ForEach(viewModel.missions) { mission in
                     MissionCard(mission: mission, isActive: false)
                         .onTapGesture {
                             viewModel.setCurrentMission(mission)
                         }
-                }
-                .onDelete { indexSet in
-                    for index in indexSet {
-                        viewModel.deleteMission(viewModel.missions[index])
-                    }
+                        .onLongPressGesture {
+                            viewModel.editMission(mission)
+                        }
+                        .contextMenu {
+                            Button("Edit Mission", systemImage: "pencil") {
+                                viewModel.editMission(mission)
+                            }
+                            Button("Delete Mission", systemImage: "trash", role: .destructive) {
+                                viewModel.deleteMission(mission)
+                            }
+                        }
                 }
 
                 if viewModel.missions.isEmpty {
@@ -268,6 +277,96 @@ struct NewMissionSheet: View {
     }
 }
 
+struct EditMissionSheet: View {
+    @ObservedObject var viewModel: MissionViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title = ""
+    @State private var description = ""
+    @State private var priority: Priority = .medium
+    @State private var progress: Double = 0
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("EDIT MISSION")
+                    .font(.system(size: 18, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .fontWeight(.bold)
+
+                VStack(spacing: 16) {
+                    TextField("Mission title...", text: $title)
+                        .textFieldStyle(CodecTextFieldStyle())
+
+                    TextField("Mission objectives...", text: $description, axis: .vertical)
+                        .textFieldStyle(CodecTextFieldStyle())
+                        .lineLimit(3...6)
+
+                    HStack {
+                        Text("Priority:")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.textColor)
+
+                        Picker("Priority", selection: $priority) {
+                            ForEach(Priority.allCases, id: \.self) { priority in
+                                Text(priority.rawValue.uppercased())
+                                    .tag(priority)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                    }
+
+                    HStack {
+                        Text("Progress:")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.textColor)
+
+                        Slider(value: $progress, in: 0...100, step: 5)
+                            .accentColor(themeManager.primaryColor)
+
+                        Text("\(Int(progress))%")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.primaryColor)
+                            .frame(width: 40)
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    CodecButton(title: "CANCEL", action: {
+                        dismiss()
+                    }, style: .secondary, size: .fullWidth)
+
+                    CodecButton(title: "UPDATE", action: {
+                        if let mission = viewModel.missionToEdit {
+                            viewModel.updateMission(
+                                mission,
+                                title: title,
+                                description: description,
+                                priority: priority,
+                                progress: progress
+                            )
+                        }
+                        dismiss()
+                    }, style: .primary, size: .fullWidth)
+                }
+            }
+            .padding(20)
+            .background(themeManager.backgroundColor)
+        }
+        .onAppear {
+            if let mission = viewModel.missionToEdit {
+                title = mission.name ?? ""
+                description = mission.missionDescription ?? ""
+                priority = Priority(rawValue: mission.priority ?? "medium") ?? .medium
+                progress = mission.progress
+            }
+        }
+    }
+}
+
 struct CodecTextFieldStyle: TextFieldStyle {
     @EnvironmentObject private var themeManager: ThemeManager
 
@@ -290,6 +389,8 @@ class MissionViewModel: BaseViewModel {
     @Published var missions: [Mission] = []
     @Published var currentMission: Mission?
     @Published var showNewMissionDialog = false
+    @Published var showEditMissionDialog = false
+    @Published var missionToEdit: Mission?
 
     private let persistenceController = PersistenceController.shared
 
@@ -331,6 +432,27 @@ class MissionViewModel: BaseViewModel {
 
     func setCurrentMission(_ mission: Mission) {
         currentMission = mission
+    }
+
+    func editMission(_ mission: Mission) {
+        missionToEdit = mission
+        showEditMissionDialog = true
+    }
+
+    func updateMission(_ mission: Mission, title: String, description: String, priority: Priority, progress: Double) {
+        let context = persistenceController.container.viewContext
+
+        mission.name = title
+        mission.missionDescription = description
+        mission.priority = priority.rawValue
+        mission.progress = progress
+
+        do {
+            try context.save()
+            fetchMissions()
+        } catch {
+            print("Error updating mission: \(error)")
+        }
     }
 
     func updateMissionProgress(_ mission: Mission, progress: Double) {

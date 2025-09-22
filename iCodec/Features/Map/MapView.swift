@@ -14,6 +14,22 @@ struct MapView: View {
                     Marker(waypoint.id, coordinate: waypoint.coordinate)
                         .tint(markerColor(for: waypoint))
                 }
+
+                // User location marker
+                if let userLocation = viewModel.userLocation {
+                    Marker("YOU", coordinate: userLocation)
+                        .tint(themeManager.successColor)
+                }
+
+                // Preview marker for where next waypoint will be placed
+                if viewModel.showPreviewMarker {
+                    Marker("?", coordinate: viewModel.mapCenter)
+                        .tint(themeManager.primaryColor.opacity(0.6))
+                }
+            }
+            .mapStyle(viewModel.currentMapStyle)
+            .onMapCameraChange { context in
+                viewModel.updateMapCenter(context.region.center)
             }
             .ignoresSafeArea()
             .colorScheme(.dark)
@@ -93,9 +109,13 @@ struct MapView: View {
             }, style: .primary, size: .medium)
 
             // Add waypoint
-            CodecButton(title: "MARK", action: {
-                viewModel.addWaypoint()
-            }, style: .secondary, size: .medium)
+            CodecButton(title: viewModel.showPreviewMarker ? "PLACE" : "MARK", action: {
+                if viewModel.showPreviewMarker {
+                    viewModel.addWaypoint()
+                } else {
+                    viewModel.togglePreviewMarker()
+                }
+            }, style: viewModel.showPreviewMarker ? .primary : .secondary, size: .medium)
 
             // Zoom controls
             VStack(spacing: 10) {
@@ -170,6 +190,10 @@ class MapViewModel: BaseViewModel {
     @Published var waypoints: [Waypoint] = []
     @Published var currentMode: MapMode = .tactical
     @Published var scaleText = "1:1000"
+    @Published var userLocation: CLLocationCoordinate2D?
+    @Published var showPreviewMarker = false
+    @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+    @Published var hasInitialLocation = false
 
     private let locationManager = CLLocationManager()
     private var locationDelegate: MapLocationDelegate?
@@ -181,10 +205,24 @@ class MapViewModel: BaseViewModel {
         case topographic = "TOPO"
     }
 
+    var currentMapStyle: MapStyle {
+        switch currentMode {
+        case .tactical:
+            return .standard(elevation: .flat)
+        case .satellite:
+            return .imagery(elevation: .flat)
+        case .infrared:
+            return .hybrid(elevation: .flat)
+        case .topographic:
+            return .standard(elevation: .realistic)
+        }
+    }
+
     override init() {
         super.init()
         setupLocationManager()
         generateSampleWaypoints()
+        requestLocationPermission()
     }
 
     private func setupLocationManager() {
@@ -207,22 +245,50 @@ class MapViewModel: BaseViewModel {
     }
 
     private func updateRegion(with location: CLLocation) {
-        region.center = location.coordinate
+        userLocation = location.coordinate
+
+        // Only center the map on the user's location when we first get it
+        if !hasInitialLocation {
+            let newRegion = MKCoordinateRegion(
+                center: location.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+            region = newRegion
+            cameraPosition = .region(newRegion)
+            updateMapCenter()
+            hasInitialLocation = true
+        }
     }
 
     func centerOnUser() {
         if let location = locationManager.location {
             withAnimation(.easeInOut(duration: 0.5)) {
-                region.center = location.coordinate
+                let newRegion = MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: region.span
+                )
+                region = newRegion
+                cameraPosition = .region(newRegion)
+                updateMapCenter()
             }
         }
+    }
+
+    private func updateMapCenter() {
+        mapCenter = region.center
+    }
+
+    func updateMapCenter(_ coordinate: CLLocationCoordinate2D) {
+        mapCenter = coordinate
     }
 
     func zoomIn() {
         withAnimation(.easeInOut(duration: 0.3)) {
             region.span.latitudeDelta *= 0.5
             region.span.longitudeDelta *= 0.5
+            cameraPosition = .region(region)
             updateScaleText()
+            updateMapCenter()
         }
     }
 
@@ -230,7 +296,9 @@ class MapViewModel: BaseViewModel {
         withAnimation(.easeInOut(duration: 0.3)) {
             region.span.latitudeDelta *= 2.0
             region.span.longitudeDelta *= 2.0
+            cameraPosition = .region(region)
             updateScaleText()
+            updateMapCenter()
         }
     }
 
@@ -245,10 +313,15 @@ class MapViewModel: BaseViewModel {
     func addWaypoint() {
         let newWaypoint = Waypoint(
             id: String(waypoints.count + 1),
-            coordinate: region.center,
+            coordinate: mapCenter,
             type: .checkpoint
         )
         waypoints.append(newWaypoint)
+        showPreviewMarker = false
+    }
+
+    func togglePreviewMarker() {
+        showPreviewMarker.toggle()
     }
 
     private func updateScaleText() {

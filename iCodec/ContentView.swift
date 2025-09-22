@@ -14,8 +14,8 @@ struct ContentView: View {
             if showBootScreen {
                 BootScreen()
                     .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                            withAnimation(.easeInOut(duration: 1)) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            withAnimation(.easeInOut(duration: 0.5)) {
                                 showBootScreen = false
                             }
                         }

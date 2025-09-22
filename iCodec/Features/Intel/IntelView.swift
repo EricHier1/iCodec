@@ -22,9 +22,17 @@ struct IntelView: View {
             .padding(.horizontal, 16)
 
             ScrollView {
-                LazyVStack(spacing: 12) {
+                VStack(spacing: 12) {
                     ForEach(viewModel.intelEntries) { entry in
                         IntelCard(entry: entry)
+                            .contextMenu {
+                                Button("Edit Intel", systemImage: "pencil") {
+                                    viewModel.editIntel(entry)
+                                }
+                                Button("Delete Intel", systemImage: "trash", role: .destructive) {
+                                    viewModel.deleteIntel(entry)
+                                }
+                            }
                     }
 
                     if viewModel.intelEntries.isEmpty {
@@ -47,6 +55,9 @@ struct IntelView: View {
         .background(themeManager.backgroundColor)
         .sheet(isPresented: $viewModel.showNewIntelDialog) {
             NewIntelSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showEditIntelDialog) {
+            EditIntelSheet(viewModel: viewModel)
         }
     }
 }
@@ -187,6 +198,8 @@ struct NewIntelSheet: View {
 class IntelViewModel: BaseViewModel {
     @Published var intelEntries: [IntelEntry] = []
     @Published var showNewIntelDialog = false
+    @Published var showEditIntelDialog = false
+    @Published var intelToEdit: IntelEntry?
 
     override init() {
         super.init()
@@ -202,6 +215,27 @@ class IntelViewModel: BaseViewModel {
             classification: classification
         )
         intelEntries.insert(newEntry, at: 0)
+    }
+
+    func editIntel(_ entry: IntelEntry) {
+        intelToEdit = entry
+        showEditIntelDialog = true
+    }
+
+    func updateIntel(_ entry: IntelEntry, title: String, content: String, classification: Classification) {
+        if let index = intelEntries.firstIndex(where: { $0.id == entry.id }) {
+            intelEntries[index] = IntelEntry(
+                id: entry.id,
+                title: title,
+                content: content,
+                timestamp: entry.timestamp,
+                classification: classification
+            )
+        }
+    }
+
+    func deleteIntel(_ entry: IntelEntry) {
+        intelEntries.removeAll { $0.id == entry.id }
     }
 
     private func generateSampleIntel() {
@@ -221,6 +255,79 @@ class IntelViewModel: BaseViewModel {
                 classification: .confidential
             )
         ]
+    }
+}
+
+struct EditIntelSheet: View {
+    @ObservedObject var viewModel: IntelViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title = ""
+    @State private var content = ""
+    @State private var classification: Classification = .confidential
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("EDIT INTEL ENTRY")
+                    .font(.system(size: 18, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .fontWeight(.bold)
+
+                VStack(spacing: 16) {
+                    TextField("Entry title...", text: $title)
+                        .textFieldStyle(CodecTextFieldStyle())
+
+                    TextField("Intel details...", text: $content, axis: .vertical)
+                        .textFieldStyle(CodecTextFieldStyle())
+                        .lineLimit(6...12)
+
+                    HStack {
+                        Text("Classification:")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.textColor)
+
+                        Picker("Classification", selection: $classification) {
+                            ForEach(Classification.allCases, id: \.self) { level in
+                                Text(level.rawValue.uppercased())
+                                    .tag(level)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    CodecButton(title: "CANCEL", action: {
+                        dismiss()
+                    }, style: .secondary, size: .fullWidth)
+
+                    CodecButton(title: "UPDATE", action: {
+                        if let entry = viewModel.intelToEdit {
+                            viewModel.updateIntel(
+                                entry,
+                                title: title,
+                                content: content,
+                                classification: classification
+                            )
+                        }
+                        dismiss()
+                    }, style: .primary, size: .fullWidth)
+                }
+            }
+            .padding(20)
+            .background(themeManager.backgroundColor)
+        }
+        .onAppear {
+            if let entry = viewModel.intelToEdit {
+                title = entry.title
+                content = entry.content
+                classification = entry.classification
+            }
+        }
     }
 }
 
