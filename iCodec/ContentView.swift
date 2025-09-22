@@ -34,6 +34,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showMissionStatsDetail) {
             MissionStatsDetailView()
+                .environmentObject(themeManager)
         }
     }
 
@@ -81,26 +82,47 @@ struct ContentView: View {
 
                 // Mission stats counters (compact)
                 HStack(spacing: 8) {
-                    StatCounter(
-                        label: "ACT",
-                        value: SharedDataManager.shared.activeMissionCount,
-                        color: themeManager.accentColor
-                    )
-
-                    StatCounter(
-                        label: "TOD",
-                        value: SharedDataManager.shared.todayCompletedCount,
-                        color: themeManager.successColor
-                    )
-
-                    StatCounter(
-                        label: "TOT",
-                        value: SharedDataManager.shared.totalCompletedCount,
-                        color: themeManager.primaryColor
-                    )
-                    .onTapGesture {
+                    Button(action: {
+                        print("Active missions counter tapped!")
+                        TacticalSoundPlayer.playNavigation()
                         showMissionStatsDetail = true
+                    }) {
+                        StatCounter(
+                            label: "ACT",
+                            value: SharedDataManager.shared.activeMissionCount,
+                            color: themeManager.accentColor,
+                            isInteractive: true
+                        )
                     }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button(action: {
+                        print("Today missions counter tapped!")
+                        TacticalSoundPlayer.playNavigation()
+                        showMissionStatsDetail = true
+                    }) {
+                        StatCounter(
+                            label: "TOD",
+                            value: SharedDataManager.shared.todayCompletedCount,
+                            color: themeManager.successColor,
+                            isInteractive: true
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button(action: {
+                        print("Total missions counter tapped!")
+                        TacticalSoundPlayer.playNavigation()
+                        showMissionStatsDetail = true
+                    }) {
+                        StatCounter(
+                            label: "TOT",
+                            value: SharedDataManager.shared.totalCompletedCount,
+                            color: themeManager.primaryColor,
+                            isInteractive: true
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -318,7 +340,15 @@ struct StatCounter: View {
     let label: String
     let value: Int
     let color: Color
+    let isInteractive: Bool
     @EnvironmentObject private var themeManager: ThemeManager
+
+    init(label: String, value: Int, color: Color, isInteractive: Bool = false) {
+        self.label = label
+        self.value = value
+        self.color = color
+        self.isInteractive = isInteractive
+    }
 
     var body: some View {
         VStack(spacing: 1) {
@@ -332,6 +362,8 @@ struct StatCounter: View {
                 .foregroundColor(themeManager.textColor.opacity(0.7))
         }
         .frame(minWidth: 28)
+        .scaleEffect(isInteractive ? 1.05 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isInteractive)
     }
 }
 
@@ -554,9 +586,9 @@ struct MissionTimelineChart: View {
                     return timestamp >= dayStart && timestamp < dayEnd && mission.status == "completed"
                 }.count
 
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MM/dd"
-                return (label: formatter.string(from: date), value: count)
+                let dayFormatter = DateFormatter()
+                dayFormatter.dateFormat = "MM/dd"
+                return (label: dayFormatter.string(from: date), value: count)
             }
 
         case .week:
@@ -584,9 +616,9 @@ struct MissionTimelineChart: View {
                     return interval.contains(timestamp) && mission.status == "completed"
                 }.count
 
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MMM"
-                return (label: formatter.string(from: date), value: count)
+                let monthFormatter = DateFormatter()
+                monthFormatter.dateFormat = "MMM"
+                return (label: monthFormatter.string(from: date), value: count)
             }
 
         case .all:
@@ -600,9 +632,9 @@ struct MissionTimelineChart: View {
                     return interval.contains(timestamp) && mission.status == "completed"
                 }.count
 
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MMM"
-                return (label: formatter.string(from: date), value: count)
+                let monthFormatter = DateFormatter()
+                monthFormatter.dateFormat = "MMM"
+                return (label: monthFormatter.string(from: date), value: count)
             }
         }
     }
