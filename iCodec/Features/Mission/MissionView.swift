@@ -287,12 +287,12 @@ struct ActiveMissionControls: View {
 
             HStack(spacing: 12) {
                 CodecButton(title: "EDIT DETAILS", action: {
-                    TacticalSoundPlayer.shared.playNavigation()
+                    TacticalSoundPlayer.playNavigation()
                     viewModel.editMission(mission)
                 }, style: .secondary, size: .small)
 
                 CodecButton(title: "MARK COMPLETE", action: {
-                    TacticalSoundPlayer.shared.playAction()
+                    TacticalSoundPlayer.playAction()
                     viewModel.completeMission(mission)
                 }, style: .primary, size: .small)
                 .disabled(progressValue >= 100)

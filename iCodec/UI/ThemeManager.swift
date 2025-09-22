@@ -1,5 +1,16 @@
 import SwiftUI
 import Combine
+import AudioToolbox
+
+enum TacticalSoundPlayer {
+    static func playNavigation() {
+        AudioServicesPlaySystemSound(1104)
+    }
+
+    static func playAction() {
+        AudioServicesPlaySystemSound(1156)
+    }
+}
 
 @MainActor
 class ThemeManager: ObservableObject {

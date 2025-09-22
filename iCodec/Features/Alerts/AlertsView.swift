@@ -19,12 +19,12 @@ struct AlertsView: View {
 
                 HStack(spacing: 8) {
                     CodecButton(title: "TEST", action: {
-                        TacticalSoundPlayer.shared.playAction()
+                        TacticalSoundPlayer.playAction()
                         viewModel.testAlert()
                     }, style: .secondary, size: .small)
 
                     CodecButton(title: "SCHEDULE", action: {
-                        TacticalSoundPlayer.shared.playNavigation()
+                        TacticalSoundPlayer.playNavigation()
                         viewModel.showScheduleDialog = true
                     }, style: .primary, size: .medium)
                 }

@@ -66,8 +66,8 @@ struct MapView: View {
 
             controlBar
         }
-        .padding(.horizontal, isCompactLayout ? 12 : 24)
-        .padding(.vertical, isCompactLayout ? 16 : 28)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 16)
     }
 
     private var infoOverlay: some View {
@@ -88,17 +88,17 @@ struct MapView: View {
     private var controlBar: some View {
         HStack(spacing: 10) {
             CodecButton(title: "MODE", action: {
-                TacticalSoundPlayer.shared.playNavigation()
+                TacticalSoundPlayer.playNavigation()
                 viewModel.cycleMode()
             }, style: .primary, size: .small)
 
             MapIconButton(systemName: "location.fill") {
-                TacticalSoundPlayer.shared.playNavigation()
+                TacticalSoundPlayer.playNavigation()
                 viewModel.centerOnUser()
             }
 
             CodecButton(title: "MARK", action: {
-                TacticalSoundPlayer.shared.playAction()
+                TacticalSoundPlayer.playAction()
                 viewModel.addWaypoint()
             }, style: .primary, size: .small)
 
@@ -106,12 +106,12 @@ struct MapView: View {
 
             HStack(spacing: 8) {
                 MapZoomButton(symbol: "minus") {
-                    TacticalSoundPlayer.shared.playNavigation()
+                    TacticalSoundPlayer.playNavigation()
                     viewModel.zoomOut()
                 }
 
                 MapZoomButton(symbol: "plus") {
-                    TacticalSoundPlayer.shared.playNavigation()
+                    TacticalSoundPlayer.playNavigation()
                     viewModel.zoomIn()
                 }
             }

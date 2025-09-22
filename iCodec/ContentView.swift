@@ -181,7 +181,7 @@ struct NavigationItem: View {
 
     var body: some View {
         Button(action: {
-            TacticalSoundPlayer.shared.playNavigation()
+            TacticalSoundPlayer.playNavigation()
             action()
         }) {
             VStack(spacing: 4) {
