@@ -9,9 +9,10 @@ struct MapView: View {
     var body: some View {
         ZStack {
             // Map background
-            Map(coordinateRegion: $viewModel.region, annotationItems: viewModel.waypoints) { waypoint in
-                MapAnnotation(coordinate: waypoint.coordinate) {
-                    WaypointMarker(waypoint: waypoint, themeManager: themeManager)
+            Map(position: $viewModel.cameraPosition) {
+                ForEach(viewModel.waypoints) { waypoint in
+                    Marker(waypoint.id, coordinate: waypoint.coordinate)
+                        .tint(markerColor(for: waypoint))
                 }
             }
             .ignoresSafeArea()
@@ -34,6 +35,19 @@ struct MapView: View {
         }
         .onAppear {
             viewModel.requestLocationPermission()
+        }
+    }
+
+    private func markerColor(for waypoint: Waypoint) -> Color {
+        switch waypoint.type {
+        case .objective:
+            return themeManager.errorColor
+        case .checkpoint:
+            return themeManager.warningColor
+        case .intel:
+            return themeManager.accentColor
+        case .extraction:
+            return themeManager.successColor
         }
     }
 
@@ -144,6 +158,13 @@ class MapViewModel: BaseViewModel {
     @Published var region = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
         span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+    )
+
+    @Published var cameraPosition = MapCameraPosition.region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
     )
 
     @Published var waypoints: [Waypoint] = []

@@ -3,7 +3,7 @@ import Combine
 
 @MainActor
 class AppCoordinator: ObservableObject {
-    @Published var currentTab: AppTab = .hud
+    @Published var currentModule: AppModule = .mission
     @Published var navigationStack: [NavigationDestination] = []
 
     private var cancellables = Set<AnyCancellable>()
@@ -30,20 +30,20 @@ class AppCoordinator: ObservableObject {
     }
 }
 
-enum AppTab: String, CaseIterable {
-    case hud = "HUD"
-    case camera = "Camera"
-    case map = "Map"
-    case audio = "Audio"
-    case settings = "Settings"
+enum AppModule: String, CaseIterable {
+    case mission = "MISSION"
+    case map = "MAP"
+    case intel = "INTEL"
+    case alerts = "ALERTS"
+    case audio = "AUDIO"
 
-    var icon: String {
+    var glyph: String {
         switch self {
-        case .hud: return "display"
-        case .camera: return "camera.viewfinder"
-        case .map: return "map"
-        case .audio: return "waveform"
-        case .settings: return "gear"
+        case .mission: return "OBJ"
+        case .map: return "TAC"
+        case .intel: return "INT"
+        case .alerts: return "ALR"
+        case .audio: return "COM"
         }
     }
 }

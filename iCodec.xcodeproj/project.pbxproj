@@ -24,6 +24,9 @@
 		1A000032000000000000001 /* MapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000033000000000000001 /* MapView.swift */; };
 		1A000034000000000000001 /* AudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000035000000000000001 /* AudioView.swift */; };
 		1A000036000000000000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000037000000000000001 /* SettingsView.swift */; };
+		1A000038000000000000001 /* MissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000039000000000000001 /* MissionView.swift */; };
+		1A00003A000000000000001 /* IntelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00003B000000000000001 /* IntelView.swift */; };
+		1A00003C000000000000001 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00003D000000000000001 /* AlertsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +49,9 @@
 		1A000033000000000000001 /* MapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapView.swift; sourceTree = "<group>"; };
 		1A000035000000000000001 /* AudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioView.swift; sourceTree = "<group>"; };
 		1A000037000000000000001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1A000039000000000000001 /* MissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionView.swift; sourceTree = "<group>"; };
+		1A00003B000000000000001 /* IntelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelView.swift; sourceTree = "<group>"; };
+		1A00003D000000000000001 /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,16 +120,19 @@
 		1A000012000000000000001 /* Features */ = {
 			isa = PBXGroup;
 			children = (
-				1A000038000000000000001 /* HUD */,
-				1A000039000000000000001 /* Camera */,
-				1A00003A000000000000001 /* Map */,
-				1A00003B000000000000001 /* Audio */,
-				1A00003C000000000000001 /* Settings */,
+				1A000041000000000000001 /* HUD */,
+				1A000042000000000000001 /* Mission */,
+				1A000043000000000000001 /* Camera */,
+				1A000044000000000000001 /* Map */,
+				1A000045000000000000001 /* Intel */,
+				1A000046000000000000001 /* Alerts */,
+				1A000047000000000000001 /* Audio */,
+				1A000048000000000000001 /* Settings */,
 			);
 			path = Features;
 			sourceTree = "<group>";
 		};
-		1A000038000000000000001 /* HUD */ = {
+		1A000041000000000000001 /* HUD */ = {
 			isa = PBXGroup;
 			children = (
 				1A00002D000000000000001 /* HUDView.swift */,
@@ -132,7 +141,15 @@
 			path = HUD;
 			sourceTree = "<group>";
 		};
-		1A000039000000000000001 /* Camera */ = {
+		1A000042000000000000001 /* Mission */ = {
+			isa = PBXGroup;
+			children = (
+				1A000039000000000000001 /* MissionView.swift */,
+			);
+			path = Mission;
+			sourceTree = "<group>";
+		};
+		1A000043000000000000001 /* Camera */ = {
 			isa = PBXGroup;
 			children = (
 				1A000031000000000000001 /* CameraView.swift */,
@@ -140,7 +157,7 @@
 			path = Camera;
 			sourceTree = "<group>";
 		};
-		1A00003A000000000000001 /* Map */ = {
+		1A000044000000000000001 /* Map */ = {
 			isa = PBXGroup;
 			children = (
 				1A000033000000000000001 /* MapView.swift */,
@@ -148,7 +165,23 @@
 			path = Map;
 			sourceTree = "<group>";
 		};
-		1A00003B000000000000001 /* Audio */ = {
+		1A000045000000000000001 /* Intel */ = {
+			isa = PBXGroup;
+			children = (
+				1A00003B000000000000001 /* IntelView.swift */,
+			);
+			path = Intel;
+			sourceTree = "<group>";
+		};
+		1A000046000000000000001 /* Alerts */ = {
+			isa = PBXGroup;
+			children = (
+				1A00003D000000000000001 /* AlertsView.swift */,
+			);
+			path = Alerts;
+			sourceTree = "<group>";
+		};
+		1A000047000000000000001 /* Audio */ = {
 			isa = PBXGroup;
 			children = (
 				1A000035000000000000001 /* AudioView.swift */,
@@ -156,7 +189,7 @@
 			path = Audio;
 			sourceTree = "<group>";
 		};
-		1A00003C000000000000001 /* Settings */ = {
+		1A000048000000000000001 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
 				1A000037000000000000001 /* SettingsView.swift */,
@@ -175,12 +208,12 @@
 			isa = PBXGroup;
 			children = (
 				1A000027000000000000001 /* ThemeManager.swift */,
-				1A00003D000000000000001 /* Components */,
+				1A000049000000000000001 /* Components */,
 			);
 			path = UI;
 			sourceTree = "<group>";
 		};
-		1A00003D000000000000001 /* Components */ = {
+		1A000049000000000000001 /* Components */ = {
 			isa = PBXGroup;
 			children = (
 				1A000029000000000000001 /* CodecButton.swift */,
@@ -223,8 +256,8 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
-				LastUpgradeCheck = 1500;
+				LastSwiftUpdateCheck = 1601;
+				LastUpgradeCheck = 1601;
 				TargetAttributes = {
 					1A00000E000000000000002 = {
 						CreatedOnToolsVersion = 15.0;
@@ -281,6 +314,9 @@
 				1A000032000000000000001 /* MapView.swift in Sources */,
 				1A000034000000000000001 /* AudioView.swift in Sources */,
 				1A000036000000000000001 /* SettingsView.swift in Sources */,
+				1A000038000000000000001 /* MissionView.swift in Sources */,
+				1A00003A000000000000001 /* IntelView.swift in Sources */,
+				1A00003C000000000000001 /* AlertsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -434,7 +470,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -466,7 +502,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
