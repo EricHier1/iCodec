@@ -19,10 +19,12 @@ struct AlertsView: View {
 
                 HStack(spacing: 8) {
                     CodecButton(title: "TEST", action: {
+                        TacticalSoundPlayer.shared.playAction()
                         viewModel.testAlert()
                     }, style: .secondary, size: .small)
 
                     CodecButton(title: "SCHEDULE", action: {
+                        TacticalSoundPlayer.shared.playNavigation()
                         viewModel.showScheduleDialog = true
                     }, style: .primary, size: .medium)
                 }
@@ -398,10 +400,16 @@ class AlertsViewModel: BaseViewModel {
 
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if granted {
-                print("Notification permission granted")
-            } else if let error = error {
-                print("Notification permission denied: \(error)")
+            DispatchQueue.main.async {
+                if granted {
+                    self.systemStatus = .operational
+                    print("Notification permission granted")
+                } else {
+                    self.systemStatus = .error
+                    if let error = error {
+                        print("Notification permission denied: \(error)")
+                    }
+                }
             }
         }
     }
@@ -455,18 +463,22 @@ class AlertsViewModel: BaseViewModel {
         content.body = alert.message ?? ""
         content.sound = UNNotificationSound.default
 
-        let calendar = Calendar.current
-        let dateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: alert.scheduledTime)
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: alert.repeatOption != .none)
+        guard let trigger = makeTrigger(for: alert) else {
+            systemStatus = .error
+            return
+        }
 
         let request = UNNotificationRequest(identifier: alert.id.uuidString, content: content, trigger: trigger)
 
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error scheduling notification: \(error)")
-            } else {
-                print("Notification scheduled for \(alert.scheduledTime)")
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.systemStatus = .error
+                    print("Error scheduling notification: \(error)")
+                } else {
+                    self.refreshSystemStatus()
+                    print("Notification scheduled for \(alert.scheduledTime)")
+                }
             }
         }
     }
@@ -476,6 +488,7 @@ class AlertsViewModel: BaseViewModel {
         persistScheduledAlerts()
         // Cancel the notification
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [alert.id.uuidString])
+        refreshSystemStatus()
     }
 
     func deleteAlertHistory(_ alert: AlertEntry) {
@@ -510,6 +523,41 @@ class AlertsViewModel: BaseViewModel {
         }
     }
 
+    private func makeTrigger(for alert: ScheduledAlert) -> UNNotificationTrigger? {
+        let calendar = Calendar.current
+        switch alert.repeatOption {
+        case .none:
+            if alert.scheduledTime <= Date().addingTimeInterval(1) {
+                return UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
+            }
+            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: alert.scheduledTime)
+            return UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        case .daily:
+            let components = calendar.dateComponents([.hour, .minute], from: alert.scheduledTime)
+            return UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        case .weekly:
+            var components = calendar.dateComponents([.weekday, .hour, .minute], from: alert.scheduledTime)
+            if components.weekday == nil {
+                components.weekday = calendar.component(.weekday, from: Date())
+            }
+            return UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        case .monthly:
+            var components = calendar.dateComponents([.day, .hour, .minute], from: alert.scheduledTime)
+            if components.day == nil {
+                components.day = calendar.component(.day, from: Date())
+            }
+            return UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        }
+    }
+
+    private func refreshSystemStatus() {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            DispatchQueue.main.async {
+                self.systemStatus = requests.isEmpty ? .operational : .warning
+            }
+        }
+    }
+
     private func loadPersistedAlerts() {
         let decoder = JSONDecoder()
 
@@ -529,6 +577,8 @@ class AlertsViewModel: BaseViewModel {
                 print("Error decoding alert history: \(error)")
             }
         }
+
+        refreshSystemStatus()
     }
 
     private func persistScheduledAlerts() {

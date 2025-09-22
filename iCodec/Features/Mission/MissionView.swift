@@ -272,7 +272,9 @@ struct ActiveMissionControls: View {
                     }
                     .tint(themeManager.primaryColor)
                     .onChange(of: progressValue) { _, newValue in
-                        guard abs(mission.progress - newValue) >= 1 else { return }
+                        let previous = mission.progress
+                        mission.progress = newValue
+                        guard abs(previous - newValue) >= 1 else { return }
                         viewModel.updateMissionProgress(mission, progress: newValue)
                     }
 
@@ -285,10 +287,12 @@ struct ActiveMissionControls: View {
 
             HStack(spacing: 12) {
                 CodecButton(title: "EDIT DETAILS", action: {
+                    TacticalSoundPlayer.shared.playNavigation()
                     viewModel.editMission(mission)
                 }, style: .secondary, size: .small)
 
                 CodecButton(title: "MARK COMPLETE", action: {
+                    TacticalSoundPlayer.shared.playAction()
                     viewModel.completeMission(mission)
                 }, style: .primary, size: .small)
                 .disabled(progressValue >= 100)

@@ -88,18 +88,33 @@ struct MapView: View {
     private var controlBar: some View {
         HStack(spacing: 10) {
             CodecButton(title: "MODE", action: {
+                TacticalSoundPlayer.shared.playNavigation()
                 viewModel.cycleMode()
             }, style: .primary, size: .small)
 
-            CodecButton(title: "CENTER", action: {
+            MapIconButton(systemName: "location.fill") {
+                TacticalSoundPlayer.shared.playNavigation()
                 viewModel.centerOnUser()
-            }, style: .primary, size: .small)
+            }
 
             CodecButton(title: "MARK", action: {
+                TacticalSoundPlayer.shared.playAction()
                 viewModel.addWaypoint()
             }, style: .primary, size: .small)
 
             Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                MapZoomButton(symbol: "minus") {
+                    TacticalSoundPlayer.shared.playNavigation()
+                    viewModel.zoomOut()
+                }
+
+                MapZoomButton(symbol: "plus") {
+                    TacticalSoundPlayer.shared.playNavigation()
+                    viewModel.zoomIn()
+                }
+            }
 
             Menu {
                 Button(role: .destructive) {
@@ -187,6 +202,50 @@ private struct ControlMenuLabel: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(RoundedRectangle(cornerRadius: 4))
+    }
+}
+
+private struct MapIconButton: View {
+    let systemName: String
+    let action: () -> Void
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(themeManager.primaryColor)
+                .frame(width: 36, height: 36)
+                .background(themeManager.surfaceColor.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(themeManager.primaryColor, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct MapZoomButton: View {
+    let symbol: String
+    let action: () -> Void
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    var body: some View {
+        Button(action: action) {
+            Text(symbol)
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(themeManager.primaryColor)
+                .frame(width: 32, height: 32)
+                .background(themeManager.surfaceColor.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(themeManager.primaryColor, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
     }
 }
 

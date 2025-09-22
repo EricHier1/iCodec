@@ -180,7 +180,10 @@ struct NavigationItem: View {
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            TacticalSoundPlayer.shared.playNavigation()
+            action()
+        }) {
             VStack(spacing: 4) {
                 // Icon/Glyph
                 Text(module.glyph)
