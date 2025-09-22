@@ -91,8 +91,8 @@ struct MapView: View {
             infoLine(label: "MODE", value: viewModel.currentMode.rawValue)
             infoLine(label: "WPTS", value: "\(viewModel.waypoints.count)")
             infoLine(label: "SCALE", value: viewModel.scaleText)
-            infoLine(label: "LAT", value: formattedCoordinate(viewModel.userLocation?.latitude, axis: .latitude))
-            infoLine(label: "LON", value: formattedCoordinate(viewModel.userLocation?.longitude, axis: .longitude))
+            infoLine(label: "LAT", value: formattedCoordinate(viewModel.mapCenter.latitude, axis: .latitude))
+            infoLine(label: "LON", value: formattedCoordinate(viewModel.mapCenter.longitude, axis: .longitude))
             infoLine(label: "ALT", value: formattedAltitude())
             infoLine(label: "ACC", value: formattedAccuracy())
         }
@@ -160,9 +160,7 @@ struct MapView: View {
         case longitude
     }
 
-    private func formattedCoordinate(_ value: CLLocationDegrees?, axis: CoordinateAxis) -> String {
-        guard let value = value else { return "—" }
-
+    private func formattedCoordinate(_ value: CLLocationDegrees, axis: CoordinateAxis) -> String {
         let direction: String
         switch axis {
         case .latitude:
@@ -472,10 +470,13 @@ class MapViewModel: BaseViewModel {
     }
 
     func updateCameraRegion(_ region: MKCoordinateRegion) {
-        self.region = region
-        mapCenter = region.center
-        cameraPosition = .region(region)
-        updateScaleText(for: region)
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+            self.region = region
+            self.mapCenter = region.center
+            self.cameraPosition = .region(region)
+            self.updateScaleText(for: region)
+        }
     }
 
     private func updateMapCenter() {
