@@ -53,6 +53,10 @@ struct MapView: View {
                 .opacity(viewModel.currentMode == .tactical || viewModel.currentMode == .dark ? 0.1 : 0)
                 .allowsHitTesting(false)
         )
+        .overlay(alignment: .center) {
+            CenterTargetView(color: themeManager.primaryColor)
+                .allowsHitTesting(false)
+        }
     }
 
     private var hudOverlay: some View {
@@ -105,12 +109,12 @@ struct MapView: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 8) {
-                MapZoomButton(symbol: "minus") {
+                MapZoomButton(symbol: "-") {
                     TacticalSoundPlayer.playNavigation()
                     viewModel.zoomOut()
                 }
 
-                MapZoomButton(symbol: "plus") {
+                MapZoomButton(symbol: "+") {
                     TacticalSoundPlayer.playNavigation()
                     viewModel.zoomIn()
                 }
@@ -204,7 +208,6 @@ private struct ControlMenuLabel: View {
             .contentShape(RoundedRectangle(cornerRadius: 4))
     }
 }
-
 private struct MapIconButton: View {
     let systemName: String
     let action: () -> Void
@@ -246,6 +249,30 @@ private struct MapZoomButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct CenterTargetView: View {
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.6), lineWidth: 1)
+                .frame(width: 32, height: 32)
+
+            Rectangle()
+                .fill(color.opacity(0.8))
+                .frame(width: 24, height: 1)
+
+            Rectangle()
+                .fill(color.opacity(0.8))
+                .frame(width: 1, height: 24)
+
+            Circle()
+                .fill(color)
+                .frame(width: 4, height: 4)
+        }
     }
 }
 
@@ -324,7 +351,7 @@ class MapViewModel: BaseViewModel {
     )
 
     @Published var waypoints: [Waypoint] = []
-    @Published var currentMode: MapMode = .tactical
+    @Published var currentMode: MapMode = .dark
     @Published var scaleText = "≈1.1 km"
     @Published var userLocation: CLLocationCoordinate2D?
     @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
@@ -381,6 +408,9 @@ class MapViewModel: BaseViewModel {
         case .authorizedWhenInUse, .authorizedAlways:
             locationManager.startUpdatingLocation()
             locationManager.requestLocation()
+            if let existing = locationManager.location {
+                updateRegion(with: existing)
+            }
         default:
             break
         }

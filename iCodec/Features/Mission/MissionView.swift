@@ -161,13 +161,13 @@ struct MissionView: View {
 }
 
 struct MissionCard: View {
-    let mission: Mission
+    @ObservedObject private var mission: Mission
     let isActive: Bool
     let isCompleted: Bool
     @EnvironmentObject private var themeManager: ThemeManager
 
     init(mission: Mission, isActive: Bool, isCompleted: Bool = false) {
-        self.mission = mission
+        self._mission = ObservedObject(wrappedValue: mission)
         self.isActive = isActive
         self.isCompleted = isCompleted
     }
@@ -207,15 +207,19 @@ struct MissionCard: View {
                         .foregroundColor(themeManager.primaryColor)
                 }
 
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(themeManager.surfaceColor)
-                        .frame(height: 4)
+                GeometryReader { geometry in
+                    let fraction = max(0, min(1, mission.progress / 100))
+                    let width = max(CGFloat(fraction) * geometry.size.width, 2)
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(themeManager.surfaceColor)
 
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(progressColor)
-                        .frame(width: progressWidth, height: 4)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(progressColor)
+                            .frame(width: width)
+                    }
                 }
+                .frame(height: 4)
             }
         }
         .padding(12)
@@ -240,10 +244,6 @@ struct MissionCard: View {
                     .stroke(priority.color, lineWidth: 1)
             )
             .cornerRadius(4)
-    }
-
-    private var progressWidth: CGFloat {
-        CGFloat(mission.progress / 100) * 200 // Approximate width
     }
 
     private var progressColor: Color {
@@ -273,8 +273,8 @@ struct ActiveMissionControls: View {
                     .tint(themeManager.primaryColor)
                     .onChange(of: progressValue) { _, newValue in
                         let previous = mission.progress
-                        mission.progress = newValue
                         guard abs(previous - newValue) >= 1 else { return }
+                        mission.progress = newValue
                         viewModel.updateMissionProgress(mission, progress: newValue)
                     }
 

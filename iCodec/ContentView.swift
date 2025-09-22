@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var themeManager = ThemeManager()
     @State private var showBootScreen = true
     @State private var currentTime = Date()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -32,31 +33,34 @@ struct ContentView: View {
         }
     }
 
+    private var horizontalPadding: CGFloat {
+        horizontalSizeClass == .compact ? 16 : 36
+    }
+
+    private var topPadding: CGFloat {
+        horizontalSizeClass == .compact ? 8 : 24
+    }
+
     private var mainInterface: some View {
-        ZStack {
-            // Background
-            themeManager.backgroundColor
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack {
+                themeManager.backgroundColor
+                    .ignoresSafeArea()
 
-            // Scanlines overlay
-            ScanlineOverlay()
-                .opacity(0.15)
+                ScanlineOverlay()
+                    .opacity(0.15)
 
-            // Main content
-            VStack(spacing: 16) {
-                // Header
-                header
-
-                // Navigation
-                navigationMenu
-
-                // Content area
-                contentArea
-
-                Spacer()
+                VStack(spacing: 16) {
+                    header
+                    navigationMenu
+                    contentArea
+                    Spacer()
+                }
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, topPadding)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
     }
 
