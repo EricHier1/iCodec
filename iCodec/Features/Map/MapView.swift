@@ -5,6 +5,8 @@ import CoreLocation
 struct MapView: View {
     @ObservedObject private var viewModel = SharedDataManager.shared.mapViewModel
     @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         ZStack {
@@ -38,12 +40,6 @@ struct MapView: View {
                 .annotationTitles(.hidden)
             }
 
-            if viewModel.showPreviewMarker {
-                Annotation("Designator", coordinate: viewModel.mapCenter) {
-                    PreviewWaypointMarker(primaryColor: themeManager.primaryColor)
-                }
-                .annotationTitles(.hidden)
-            }
         }
         .mapStyle(viewModel.currentMapStyle)
         .onMapCameraChange { context in
@@ -60,41 +56,91 @@ struct MapView: View {
     }
 
     private var hudOverlay: some View {
-        VStack {
-            HStack(alignment: .top, spacing: 16) {
-                statusPanel
-                    .frame(maxWidth: 280)
+        Group {
+            if isCompactLayout {
+                compactHUD
+            } else {
+                regularHUD
+            }
+        }
+        .padding(.horizontal, isCompactLayout ? 12 : 24)
+        .padding(.vertical, isCompactLayout ? 12 : 32)
+    }
 
-                Spacer(minLength: 12)
+    private var compactHUD: some View {
+        VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                ViewThatFits {
+                    HStack(spacing: 8) {
+                        HUDChip(title: "MODE", value: viewModel.currentMode.rawValue)
+                        HUDChip(title: "SCALE", value: viewModel.scaleText)
+                        HUDChip(title: "WPTS", value: "\(viewModel.waypoints.count)")
+                    }
 
-                modePanel
-                    .frame(width: 220)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HUDChip(title: "MODE", value: viewModel.currentMode.rawValue)
+                        HUDChip(title: "SCALE", value: viewModel.scaleText)
+                        HUDChip(title: "WPTS", value: "\(viewModel.waypoints.count)")
+                    }
+                }
+
+                ViewThatFits {
+                    HStack(spacing: 8) {
+                        HUDChip(title: "LAT", value: formattedCoordinate(viewModel.userLocation?.latitude, axis: .latitude))
+                        HUDChip(title: "LON", value: formattedCoordinate(viewModel.userLocation?.longitude, axis: .longitude))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HUDChip(title: "LAT", value: formattedCoordinate(viewModel.userLocation?.latitude, axis: .latitude))
+                        HUDChip(title: "LON", value: formattedCoordinate(viewModel.userLocation?.longitude, axis: .longitude))
+                    }
+                }
+
+                ViewThatFits {
+                    HStack(spacing: 8) {
+                        HUDChip(title: "ALT", value: formattedAltitude())
+                        HUDChip(title: "ACC", value: formattedAccuracy())
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HUDChip(title: "ALT", value: formattedAltitude())
+                        HUDChip(title: "ACC", value: formattedAccuracy())
+                    }
+                }
             }
 
             Spacer()
 
-            HStack(alignment: .bottom, spacing: 16) {
-                commandPanel
-                    .frame(maxWidth: 360)
-
-                Spacer(minLength: 12)
-
-                intelPanel
-                    .frame(width: 240)
-            }
+            compactControlBar
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 24)
-        .overlay(
-            ScanlineOverlay()
-                .opacity(0.15)
-                .allowsHitTesting(false)
-        )
     }
 
-    private var statusPanel: some View {
-        MapHUDCard(title: "Current Position") {
-            VStack(alignment: .leading, spacing: 6) {
+    private var regularHUD: some View {
+        VStack(spacing: 20) {
+            mapInfoPanel
+                .frame(maxWidth: 360)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
+
+            HStack {
+                mapControlPanel
+                    .frame(maxWidth: 360)
+                Spacer()
+            }
+        }
+    }
+
+    private var mapInfoPanel: some View {
+        HUDPanel(title: "Tactical Map") {
+            VStack(alignment: .leading, spacing: 8) {
+                hudReadout(label: "MODE", value: viewModel.currentMode.rawValue)
+                hudReadout(label: "WAYPOINTS", value: "\(viewModel.waypoints.count)")
+                hudReadout(label: "SCALE", value: viewModel.scaleText)
+
+                Divider()
+                    .background(themeManager.primaryColor.opacity(0.2))
+
                 hudReadout(label: "LAT", value: formattedCoordinate(viewModel.userLocation?.latitude, axis: .latitude))
                 hudReadout(label: "LON", value: formattedCoordinate(viewModel.userLocation?.longitude, axis: .longitude))
                 hudReadout(label: "ALT", value: formattedAltitude())
@@ -103,77 +149,84 @@ struct MapView: View {
         }
     }
 
-    private var modePanel: some View {
-        MapHUDCard(title: "Display Mode") {
-            VStack(alignment: .leading, spacing: 12) {
-                hudReadout(label: "ACTIVE", value: viewModel.currentMode.rawValue)
-
-                CodecButton(title: "CYCLE MODES", action: {
-                    viewModel.cycleMode()
-                }, style: .secondary, size: .fullWidth)
-            }
-        }
-    }
-
-    private var commandPanel: some View {
-        MapHUDCard(title: "Command Console") {
+    private var mapControlPanel: some View {
+        HUDPanel(title: "Map Controls") {
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
-                    CodecButton(title: "MY POS", action: {
+                    CodecButton(title: "MODE", action: {
+                        viewModel.cycleMode()
+                    }, style: .secondary, size: .small)
+
+                    CodecButton(title: "CENTER", action: {
                         viewModel.centerOnUser()
                     }, style: .primary, size: .small)
 
-                    CodecButton(title: viewModel.showPreviewMarker ? "CONFIRM MARK" : "DROP WAYPOINT", action: {
+                    CodecButton(title: "MARK TARGET", action: {
                         viewModel.addWaypoint()
                     }, style: .primary, size: .small)
                 }
 
                 HStack(spacing: 12) {
-                    CodecButton(
-                        title: viewModel.showPreviewMarker ? "HIDE PREVIEW" : "PREVIEW TARGET",
-                        action: {
-                            viewModel.togglePreviewMarker()
-                        },
-                        style: viewModel.showPreviewMarker ? .primary : .secondary,
-                        size: .small
-                    )
-
-                    CodecButton(title: "CLEAR ALL", action: {
-                        viewModel.deleteAllWaypoints()
-                    }, style: .destructive, size: .small)
-                }
-
-                Divider()
-                    .background(themeManager.primaryColor.opacity(0.3))
-
-                HStack(spacing: 12) {
-                    ZoomCommandButton(symbol: "−", action: {
-                        viewModel.zoomOut()
-                    }, themeManager: themeManager)
-
-                    ZoomCommandButton(symbol: "+", action: {
-                        viewModel.zoomIn()
-                    }, themeManager: themeManager)
-
                     Spacer()
+
+                    Menu {
+                        Button(role: .destructive) {
+                            viewModel.deleteAllWaypoints()
+                        } label: {
+                            Label("Clear all waypoints", systemImage: "trash")
+                        }
+                    } label: {
+                        ControlMenuLabel(text: "MORE")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .disabled(viewModel.waypoints.isEmpty)
                 }
             }
         }
     }
 
-    private var intelPanel: some View {
-        MapHUDCard(title: "Map Intel") {
-            VStack(alignment: .leading, spacing: 6) {
-                hudReadout(label: "WAYPOINTS", value: "\(viewModel.waypoints.count)")
-                hudReadout(label: "SCALE", value: viewModel.scaleText)
-                hudReadout(label: "CROSS LAT", value: formattedCoordinate(viewModel.mapCenter.latitude, axis: .latitude))
-                hudReadout(label: "CROSS LON", value: formattedCoordinate(viewModel.mapCenter.longitude, axis: .longitude))
+    private var compactControlBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                CodecButton(title: "MODE", action: {
+                    viewModel.cycleMode()
+                }, style: .secondary, size: .small)
 
-                if let selected = viewModel.selectedWaypoint {
-                    hudReadout(label: "SELECTED", value: selected.name)
+                CodecButton(title: "CENTER", action: {
+                    viewModel.centerOnUser()
+                }, style: .primary, size: .small)
+
+                CodecButton(title: "MARK", action: {
+                    viewModel.addWaypoint()
+                }, style: .primary, size: .small)
+
+                Spacer(minLength: 0)
+            }
+
+            HStack {
+                Spacer(minLength: 0)
+
+                Menu {
+                    Button(role: .destructive) {
+                        viewModel.deleteAllWaypoints()
+                    } label: {
+                        Label("Clear all waypoints", systemImage: "trash")
+                    }
+                } label: {
+                    ControlMenuLabel(text: "MORE")
                 }
+                .menuStyle(.borderlessButton)
+                .disabled(viewModel.waypoints.isEmpty)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(themeManager.backgroundColor.opacity(0.7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(themeManager.primaryColor.opacity(0.4), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func hudReadout(label: String, value: String) -> some View {
@@ -188,6 +241,10 @@ struct MapView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(themeManager.textColor)
         }
+    }
+
+    private var isCompactLayout: Bool {
+        horizontalSizeClass == .compact || verticalSizeClass == .compact
     }
 
     private enum CoordinateAxis {
@@ -209,10 +266,6 @@ struct MapView: View {
         return String(format: "%.4f° %@", abs(value), direction)
     }
 
-    private func formattedCoordinate(_ value: CLLocationDegrees, axis: CoordinateAxis) -> String {
-        formattedCoordinate(Optional(value), axis: axis)
-    }
-
     private func formattedAltitude() -> String {
         guard let altitude = viewModel.lastKnownLocation?.altitude else { return "—" }
         return String(format: "%.0f m", altitude)
@@ -227,61 +280,66 @@ struct MapView: View {
     }
 }
 
-private struct MapHUDCard<Content: View>: View {
+private struct ControlMenuLabel: View {
+    let text: String
+
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        let borderColor = themeManager.secondaryColor
+        let foreground = isEnabled ? borderColor : borderColor.opacity(0.4)
+        let background = borderColor.opacity(isEnabled ? 0.2 : 0.08)
+
+        Text(text)
+            .font(.system(size: 11, design: .monospaced))
+            .fontWeight(.semibold)
+            .foregroundColor(foreground)
+            .padding(.horizontal, 16)
+            .frame(height: 32)
+            .background(background)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(foreground, lineWidth: 1)
+            )
+            .overlay(
+                ScanlineOverlay()
+                    .opacity(0.3)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .contentShape(RoundedRectangle(cornerRadius: 4))
+    }
+}
+
+private struct HUDChip: View {
     let title: String
-    let content: Content
+    let value: String
 
     @EnvironmentObject private var themeManager: ThemeManager
 
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title.uppercased())
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(themeManager.primaryColor)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundColor(themeManager.accentColor)
+                .textCase(.uppercase)
 
-            content
+            Text(value)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(themeManager.textColor)
         }
-        .padding(16)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(themeManager.backgroundColor.opacity(0.65))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(themeManager.primaryColor.opacity(0.35), lineWidth: 1)
         )
         .overlay(
             ScanlineOverlay()
                 .opacity(0.2)
         )
-        .cornerRadius(8)
-    }
-}
-
-private struct ZoomCommandButton: View {
-    let symbol: String
-    let action: () -> Void
-    let themeManager: ThemeManager
-
-    var body: some View {
-        Button(action: action) {
-            Text(symbol)
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .frame(width: 36, height: 36)
-                .foregroundColor(themeManager.primaryColor)
-                .background(themeManager.surfaceColor.opacity(0.25))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(themeManager.primaryColor, lineWidth: 1)
-                )
-                .overlay(
-                    ScanlineOverlay()
-                        .opacity(0.3)
-                )
-        }
-        .buttonStyle(.plain)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -306,26 +364,6 @@ private struct UserLocationMarker: View {
                     Circle()
                         .stroke(accentColor, lineWidth: 2)
                 )
-        }
-    }
-}
-
-private struct PreviewWaypointMarker: View {
-    let primaryColor: Color
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(primaryColor.opacity(0.6), lineWidth: 1)
-                .frame(width: 28, height: 28)
-
-            Rectangle()
-                .fill(primaryColor.opacity(0.8))
-                .frame(width: 2, height: 20)
-
-            Rectangle()
-                .fill(primaryColor.opacity(0.8))
-                .frame(width: 20, height: 2)
         }
     }
 }
@@ -383,7 +421,6 @@ class MapViewModel: BaseViewModel {
     @Published var currentMode: MapMode = .tactical
     @Published var scaleText = "≈1.1 km"
     @Published var userLocation: CLLocationCoordinate2D?
-    @Published var showPreviewMarker = false
     @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
     @Published var hasInitialLocation = false
     @Published var selectedWaypoint: Waypoint?
@@ -539,11 +576,6 @@ class MapViewModel: BaseViewModel {
             type: .checkpoint
         )
         waypoints.append(newWaypoint)
-        showPreviewMarker = false
-    }
-
-    func togglePreviewMarker() {
-        showPreviewMarker.toggle()
     }
 
     func selectWaypoint(_ waypoint: Waypoint) {

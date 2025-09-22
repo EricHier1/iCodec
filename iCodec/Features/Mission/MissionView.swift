@@ -54,6 +54,21 @@ struct MissionView: View {
 
             if let currentMission = viewModel.currentMission {
                 MissionCard(mission: currentMission, isActive: true)
+                    .contextMenu {
+                        Button("Edit Mission", systemImage: "pencil") {
+                            viewModel.editMission(currentMission)
+                        }
+
+                        Button("Mark Complete", systemImage: "checkmark.circle") {
+                            viewModel.completeMission(currentMission)
+                        }
+
+                        Button("Delete Mission", systemImage: "trash", role: .destructive) {
+                            viewModel.deleteMission(currentMission)
+                        }
+                    }
+
+                ActiveMissionControls(mission: currentMission, viewModel: viewModel)
             } else {
                 VStack(spacing: 8) {
                     Text("No active mission")
@@ -236,6 +251,66 @@ struct MissionCard: View {
         if progress < 25 { return themeManager.errorColor }
         else if progress < 75 { return themeManager.warningColor }
         else { return themeManager.successColor }
+    }
+}
+
+struct ActiveMissionControls: View {
+    @ObservedObject var mission: Mission
+    let viewModel: MissionViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @State private var progressValue: Double = 0
+    var body: some View {
+        VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Mission Progress")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(themeManager.textColor)
+
+                HStack(spacing: 12) {
+                    Slider(value: $progressValue, in: 0...100, step: 5) {
+                        Text("Progress")
+                    }
+                    .tint(themeManager.primaryColor)
+                    .onChange(of: progressValue) { newValue in
+                        guard abs(mission.progress - newValue) >= 1 else { return }
+                        viewModel.updateMissionProgress(mission, progress: newValue)
+                    }
+
+                    Text("\(Int(progressValue))%")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .frame(width: 44)
+                }
+            }
+
+            HStack(spacing: 12) {
+                CodecButton(title: "EDIT DETAILS", action: {
+                    viewModel.editMission(mission)
+                }, style: .secondary, size: .small)
+
+                CodecButton(title: "MARK COMPLETE", action: {
+                    viewModel.completeMission(mission)
+                }, style: .primary, size: .small)
+                .disabled(progressValue >= 100)
+
+                Spacer()
+            }
+        }
+        .padding(12)
+        .background(themeManager.surfaceColor.opacity(0.25))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(themeManager.primaryColor.opacity(0.35), lineWidth: 1)
+        )
+        .cornerRadius(8)
+        .onAppear {
+            progressValue = mission.progress
+        }
+        .onChange(of: mission.progress) { newValue in
+            if progressValue != newValue {
+                progressValue = newValue
+            }
+        }
     }
 }
 
@@ -545,6 +620,11 @@ class MissionViewModel: BaseViewModel {
     func updateMissionProgress(_ mission: Mission, progress: Double) {
         let context = persistenceController.container.viewContext
         mission.progress = progress
+        mission.status = status(for: mission, progress: progress)
+
+        if mission.status == "completed" && currentMission?.objectID == mission.objectID {
+            currentMission = nil
+        }
 
         do {
             try context.save()
@@ -552,6 +632,10 @@ class MissionViewModel: BaseViewModel {
         } catch {
             print("Error updating mission progress: \(error)")
         }
+    }
+
+    func completeMission(_ mission: Mission) {
+        updateMissionProgress(mission, progress: 100)
     }
 
     func deleteMission(_ mission: Mission) {
