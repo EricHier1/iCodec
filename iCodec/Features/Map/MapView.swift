@@ -11,8 +11,12 @@ struct MapView: View {
             // Map background
             Map(position: $viewModel.cameraPosition) {
                 ForEach(viewModel.waypoints) { waypoint in
-                    Marker(waypoint.id, coordinate: waypoint.coordinate)
-                        .tint(markerColor(for: waypoint))
+                    Annotation(waypoint.name.isEmpty ? waypoint.id : waypoint.name, coordinate: waypoint.coordinate) {
+                        WaypointMarker(waypoint: waypoint, themeManager: themeManager)
+                            .onTapGesture {
+                                viewModel.selectWaypoint(waypoint)
+                            }
+                    }
                 }
 
                 // User location marker
@@ -31,8 +35,15 @@ struct MapView: View {
             .onMapCameraChange { context in
                 viewModel.updateMapCenter(context.region.center)
             }
+            .mapControlVisibility(.hidden)
             .ignoresSafeArea()
-            .colorScheme(.dark)
+            .colorScheme(viewModel.currentMode == .dark ? .dark : .light)
+            .overlay(
+                // Tactical grid overlay
+                TacticalGridOverlay()
+                    .opacity(viewModel.currentMode == .tactical || viewModel.currentMode == .dark ? 0.1 : 0)
+                    .allowsHitTesting(false)
+            )
 
             // HUD Overlay
             VStack {
@@ -51,6 +62,9 @@ struct MapView: View {
         }
         .onAppear {
             viewModel.requestLocationPermission()
+        }
+        .sheet(isPresented: $viewModel.showWaypointEditor) {
+            WaypointEditorSheet(viewModel: viewModel)
         }
     }
 
@@ -97,39 +111,76 @@ struct MapView: View {
     }
 
     private var bottomControls: some View {
-        HStack(spacing: 20) {
-            // Mode toggle
-            CodecButton(title: "MODE", action: {
-                viewModel.cycleMode()
-            }, style: .secondary, size: .medium)
+        VStack(spacing: 12) {
+            // Top row of controls
+            HStack(spacing: 16) {
+                // Mode toggle
+                CodecButton(title: "MODE", action: {
+                    viewModel.cycleMode()
+                }, style: .secondary, size: .small)
 
-            // Center on user
-            CodecButton(title: "CENTER", action: {
-                viewModel.centerOnUser()
-            }, style: .primary, size: .medium)
+                // Center on user
+                CodecButton(title: "MY POS", action: {
+                    viewModel.centerOnUser()
+                }, style: .primary, size: .small)
 
-            // Add waypoint
-            CodecButton(title: viewModel.showPreviewMarker ? "PLACE" : "MARK", action: {
-                if viewModel.showPreviewMarker {
-                    viewModel.addWaypoint()
-                } else {
-                    viewModel.togglePreviewMarker()
+                // Add waypoint
+                CodecButton(title: viewModel.showPreviewMarker ? "PLACE" : "MARK", action: {
+                    if viewModel.showPreviewMarker {
+                        viewModel.addWaypoint()
+                    } else {
+                        viewModel.togglePreviewMarker()
+                    }
+                }, style: viewModel.showPreviewMarker ? .primary : .secondary, size: .small)
+
+                // Clear all waypoints
+                CodecButton(title: "CLEAR", action: {
+                    viewModel.deleteAllWaypoints()
+                }, style: .secondary, size: .small)
+            }
+
+            // Bottom row with zoom controls
+            HStack(spacing: 20) {
+                // Zoom controls
+                HStack(spacing: 12) {
+                    Button(action: { viewModel.zoomOut() }) {
+                        Text("−")
+                            .foregroundColor(themeManager.primaryColor)
+                            .font(.system(size: 20, weight: .bold, design: .monospaced))
+                            .frame(width: 32, height: 32)
+                            .background(themeManager.surfaceColor.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(themeManager.primaryColor, lineWidth: 1)
+                            )
+                    }
+
+                    Button(action: { viewModel.zoomIn() }) {
+                        Text("+")
+                            .foregroundColor(themeManager.primaryColor)
+                            .font(.system(size: 20, weight: .bold, design: .monospaced))
+                            .frame(width: 32, height: 32)
+                            .background(themeManager.surfaceColor.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(themeManager.primaryColor, lineWidth: 1)
+                            )
+                    }
                 }
-            }, style: viewModel.showPreviewMarker ? .primary : .secondary, size: .medium)
 
-            // Zoom controls
-            VStack(spacing: 10) {
-                Button(action: { viewModel.zoomIn() }) {
-                    Image(systemName: "plus")
-                        .foregroundColor(themeManager.primaryColor)
-                        .font(.system(size: 16, weight: .bold))
-                }
+                Spacer()
 
-                Button(action: { viewModel.zoomOut() }) {
-                    Image(systemName: "minus")
-                        .foregroundColor(themeManager.primaryColor)
-                        .font(.system(size: 16, weight: .bold))
-                }
+                // Map type indicator
+                Text(viewModel.currentMode.rawValue)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(themeManager.surfaceColor.opacity(0.3))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(themeManager.primaryColor, lineWidth: 1)
+                    )
             }
         }
         .padding(.bottom, 30)
@@ -194,27 +245,29 @@ class MapViewModel: BaseViewModel {
     @Published var showPreviewMarker = false
     @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
     @Published var hasInitialLocation = false
+    @Published var selectedWaypoint: Waypoint?
+    @Published var showWaypointEditor = false
 
     private let locationManager = CLLocationManager()
     private var locationDelegate: MapLocationDelegate?
 
     enum MapMode: String, CaseIterable {
         case tactical = "TACTICAL"
+        case dark = "DARK"
         case satellite = "SATELLITE"
         case infrared = "INFRARED"
-        case topographic = "TOPO"
     }
 
     var currentMapStyle: MapStyle {
         switch currentMode {
         case .tactical:
-            return .standard(elevation: .flat)
+            return .standard(elevation: .flat, pointsOfInterest: .excludingAll)
+        case .dark:
+            return .standard(elevation: .flat, pointsOfInterest: .excludingAll)
         case .satellite:
             return .imagery(elevation: .flat)
         case .infrared:
-            return .hybrid(elevation: .flat)
-        case .topographic:
-            return .standard(elevation: .realistic)
+            return .hybrid(elevation: .flat, pointsOfInterest: .excludingAll)
         }
     }
 
@@ -247,16 +300,18 @@ class MapViewModel: BaseViewModel {
     private func updateRegion(with location: CLLocation) {
         userLocation = location.coordinate
 
-        // Only center the map on the user's location when we first get it
+        // Always center the map on the user's location when we first get it
         if !hasInitialLocation {
-            let newRegion = MKCoordinateRegion(
-                center: location.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            )
-            region = newRegion
-            cameraPosition = .region(newRegion)
-            updateMapCenter()
-            hasInitialLocation = true
+            DispatchQueue.main.async {
+                let newRegion = MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+                self.region = newRegion
+                self.cameraPosition = .region(newRegion)
+                self.updateMapCenter()
+                self.hasInitialLocation = true
+            }
         }
     }
 
@@ -271,6 +326,19 @@ class MapViewModel: BaseViewModel {
                 cameraPosition = .region(newRegion)
                 updateMapCenter()
             }
+        } else if let userLoc = userLocation {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                let newRegion = MKCoordinateRegion(
+                    center: userLoc,
+                    span: region.span
+                )
+                region = newRegion
+                cameraPosition = .region(newRegion)
+                updateMapCenter()
+            }
+        } else {
+            // Request location again if we don't have it
+            requestLocationPermission()
         }
     }
 
@@ -313,6 +381,7 @@ class MapViewModel: BaseViewModel {
     func addWaypoint() {
         let newWaypoint = Waypoint(
             id: String(waypoints.count + 1),
+            name: "Waypoint \(waypoints.count + 1)",
             coordinate: mapCenter,
             type: .checkpoint
         )
@@ -324,6 +393,26 @@ class MapViewModel: BaseViewModel {
         showPreviewMarker.toggle()
     }
 
+    func selectWaypoint(_ waypoint: Waypoint) {
+        selectedWaypoint = waypoint
+        showWaypointEditor = true
+    }
+
+    func updateWaypoint(_ waypoint: Waypoint, name: String, type: Waypoint.WaypointType) {
+        if let index = waypoints.firstIndex(where: { $0.id == waypoint.id }) {
+            waypoints[index].name = name
+            waypoints[index] = Waypoint(id: waypoint.id, name: name, coordinate: waypoint.coordinate, type: type)
+        }
+    }
+
+    func deleteWaypoint(_ waypoint: Waypoint) {
+        waypoints.removeAll { $0.id == waypoint.id }
+    }
+
+    func deleteAllWaypoints() {
+        waypoints.removeAll()
+    }
+
     private func updateScaleText() {
         let scale = Int(region.span.latitudeDelta * 100000)
         scaleText = "1:\(scale)"
@@ -331,16 +420,17 @@ class MapViewModel: BaseViewModel {
 
     private func generateSampleWaypoints() {
         waypoints = [
-            Waypoint(id: "A", coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), type: .objective),
-            Waypoint(id: "B", coordinate: CLLocationCoordinate2D(latitude: 37.7849, longitude: -122.4094), type: .checkpoint),
-            Waypoint(id: "C", coordinate: CLLocationCoordinate2D(latitude: 37.7649, longitude: -122.4294), type: .intel),
-            Waypoint(id: "E", coordinate: CLLocationCoordinate2D(latitude: 37.7949, longitude: -122.3994), type: .extraction)
+            Waypoint(id: "A", name: "Primary Target", coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), type: .objective),
+            Waypoint(id: "B", name: "Checkpoint Alpha", coordinate: CLLocationCoordinate2D(latitude: 37.7849, longitude: -122.4094), type: .checkpoint),
+            Waypoint(id: "C", name: "Intel Point", coordinate: CLLocationCoordinate2D(latitude: 37.7649, longitude: -122.4294), type: .intel),
+            Waypoint(id: "E", name: "Extraction Zone", coordinate: CLLocationCoordinate2D(latitude: 37.7949, longitude: -122.3994), type: .extraction)
         ]
     }
 }
 
 struct Waypoint: Identifiable {
     let id: String
+    var name: String
     let coordinate: CLLocationCoordinate2D
     let type: WaypointType
 
@@ -367,6 +457,119 @@ private class MapLocationDelegate: NSObject, CLLocationManagerDelegate {
             manager.startUpdatingLocation()
         default:
             break
+        }
+    }
+}
+
+struct WaypointEditorSheet: View {
+    @ObservedObject var viewModel: MapViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var waypointType: Waypoint.WaypointType = .checkpoint
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("EDIT WAYPOINT")
+                    .font(.system(size: 18, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .fontWeight(.bold)
+
+                VStack(spacing: 16) {
+                    TextField("Waypoint name...", text: $name)
+                        .textFieldStyle(CodecTextFieldStyle())
+
+                    HStack {
+                        Text("Type:")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.textColor)
+
+                        Picker("Type", selection: $waypointType) {
+                            Text("OBJECTIVE").tag(Waypoint.WaypointType.objective)
+                            Text("CHECKPOINT").tag(Waypoint.WaypointType.checkpoint)
+                            Text("INTEL").tag(Waypoint.WaypointType.intel)
+                            Text("EXTRACTION").tag(Waypoint.WaypointType.extraction)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    CodecButton(title: "DELETE", action: {
+                        if let waypoint = viewModel.selectedWaypoint {
+                            viewModel.deleteWaypoint(waypoint)
+                        }
+                        dismiss()
+                    }, style: .secondary, size: .fullWidth)
+
+                    CodecButton(title: "UPDATE", action: {
+                        if let waypoint = viewModel.selectedWaypoint {
+                            viewModel.updateWaypoint(waypoint, name: name, type: waypointType)
+                        }
+                        dismiss()
+                    }, style: .primary, size: .fullWidth)
+                }
+            }
+            .padding(20)
+            .background(themeManager.backgroundColor)
+        }
+        .onAppear {
+            if let waypoint = viewModel.selectedWaypoint {
+                name = waypoint.name
+                waypointType = waypoint.type
+            }
+        }
+    }
+}
+
+struct TacticalGridOverlay: View {
+    var body: some View {
+        Canvas { context, size in
+            let gridSpacing: CGFloat = 50
+
+            // Draw vertical lines
+            for x in stride(from: 0, through: size.width, by: gridSpacing) {
+                context.stroke(
+                    Path { path in
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: size.height))
+                    },
+                    with: .color(.green.opacity(0.3)),
+                    lineWidth: 0.5
+                )
+            }
+
+            // Draw horizontal lines
+            for y in stride(from: 0, through: size.height, by: gridSpacing) {
+                context.stroke(
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: size.width, y: y))
+                    },
+                    with: .color(.green.opacity(0.3)),
+                    lineWidth: 0.5
+                )
+            }
+
+            // Draw crosshair at center
+            let centerX = size.width / 2
+            let centerY = size.height / 2
+            let crosshairSize: CGFloat = 20
+
+            context.stroke(
+                Path { path in
+                    path.move(to: CGPoint(x: centerX - crosshairSize, y: centerY))
+                    path.addLine(to: CGPoint(x: centerX + crosshairSize, y: centerY))
+                    path.move(to: CGPoint(x: centerX, y: centerY - crosshairSize))
+                    path.addLine(to: CGPoint(x: centerX, y: centerY + crosshairSize))
+                },
+                with: .color(.green.opacity(0.8)),
+                lineWidth: 2
+            )
         }
     }
 }

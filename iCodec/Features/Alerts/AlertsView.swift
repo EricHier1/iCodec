@@ -1,4 +1,6 @@
 import SwiftUI
+import UserNotifications
+import AVFoundation
 
 struct AlertsView: View {
     @StateObject private var viewModel = AlertsViewModel()
@@ -77,12 +79,20 @@ struct AlertsView: View {
         .sheet(isPresented: $viewModel.showScheduleDialog) {
             ScheduleAlertSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showEditDialog) {
+            EditAlertSheet(viewModel: viewModel)
+        }
     }
 
     private var alertHistorySection: some View {
         LazyVStack(spacing: 8) {
             ForEach(viewModel.alertHistory) { alert in
                 AlertHistoryCard(alert: alert)
+                    .contextMenu {
+                        Button("Delete Alert", systemImage: "trash", role: .destructive) {
+                            viewModel.deleteAlertHistory(alert)
+                        }
+                    }
             }
 
             if viewModel.alertHistory.isEmpty {
@@ -102,6 +112,14 @@ struct AlertsView: View {
                 ScheduledAlertCard(alert: alert, onDelete: {
                     viewModel.deleteScheduledAlert(alert)
                 })
+                .contextMenu {
+                    Button("Edit Alert", systemImage: "pencil") {
+                        viewModel.editScheduledAlert(alert)
+                    }
+                    Button("Delete Alert", systemImage: "trash", role: .destructive) {
+                        viewModel.deleteScheduledAlert(alert)
+                    }
+                }
             }
 
             if viewModel.scheduledAlerts.isEmpty {
@@ -273,6 +291,86 @@ struct ScheduleAlertSheet: View {
     }
 }
 
+struct EditAlertSheet: View {
+    @ObservedObject var viewModel: AlertsViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title = ""
+    @State private var message = ""
+    @State private var scheduledTime = Date().addingTimeInterval(3600)
+    @State private var repeatOption: RepeatOption = .none
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("EDIT ALERT")
+                    .font(.system(size: 18, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .fontWeight(.bold)
+
+                VStack(spacing: 16) {
+                    TextField("Alert title...", text: $title)
+                        .textFieldStyle(CodecTextFieldStyle())
+
+                    TextField("Alert message...", text: $message, axis: .vertical)
+                        .textFieldStyle(CodecTextFieldStyle())
+                        .lineLimit(3...6)
+
+                    DatePicker("Scheduled Time", selection: $scheduledTime, displayedComponents: [.date, .hourAndMinute])
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(themeManager.textColor)
+
+                    HStack {
+                        Text("Repeat:")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.textColor)
+
+                        Picker("Repeat", selection: $repeatOption) {
+                            ForEach(RepeatOption.allCases, id: \.self) { option in
+                                Text(option.rawValue)
+                                    .tag(option)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    CodecButton(title: "CANCEL", action: {
+                        dismiss()
+                    }, style: .secondary, size: .fullWidth)
+
+                    CodecButton(title: "UPDATE", action: {
+                        if let alert = viewModel.alertToEdit {
+                            viewModel.updateScheduledAlert(
+                                alert,
+                                title: title,
+                                message: message,
+                                time: scheduledTime,
+                                repeatOption: repeatOption
+                            )
+                        }
+                        dismiss()
+                    }, style: .primary, size: .fullWidth)
+                }
+            }
+            .padding(20)
+            .background(themeManager.backgroundColor)
+        }
+        .onAppear {
+            if let alert = viewModel.alertToEdit {
+                title = alert.title
+                message = alert.message ?? ""
+                scheduledTime = alert.scheduledTime
+                repeatOption = alert.repeatOption
+            }
+        }
+    }
+}
+
 @MainActor
 class AlertsViewModel: BaseViewModel {
     @Published var alertHistory: [AlertEntry] = []
@@ -280,10 +378,23 @@ class AlertsViewModel: BaseViewModel {
     @Published var selectedTab: AlertTab = .history
     @Published var systemStatus: SystemStatus = .operational
     @Published var showScheduleDialog = false
+    @Published var showEditDialog = false
+    @Published var alertToEdit: ScheduledAlert?
 
     override init() {
         super.init()
         generateSampleAlerts()
+        requestNotificationPermission()
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("Notification permission granted")
+            } else if let error = error {
+                print("Notification permission denied: \(error)")
+            }
+        }
     }
 
     func testAlert() {
@@ -295,6 +406,21 @@ class AlertsViewModel: BaseViewModel {
             priority: .medium
         )
         alertHistory.insert(testAlert, at: 0)
+
+        // Send immediate test notification
+        let content = UNMutableNotificationContent()
+        content.title = "iCodec Test Alert"
+        content.body = "System test notification successful"
+        content.sound = UNNotificationSound.default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: "test-\(UUID().uuidString)", content: content, trigger: trigger)
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error sending test notification: \(error)")
+            }
+        }
     }
 
     func scheduleAlert(title: String, message: String, time: Date, repeatOption: RepeatOption) {
@@ -307,10 +433,67 @@ class AlertsViewModel: BaseViewModel {
         )
         scheduledAlerts.append(scheduledAlert)
         scheduledAlerts.sort { $0.scheduledTime < $1.scheduledTime }
+
+        // Schedule actual notification
+        scheduleNotification(for: scheduledAlert)
+    }
+
+    private func scheduleNotification(for alert: ScheduledAlert) {
+        let content = UNMutableNotificationContent()
+        content.title = alert.title
+        content.body = alert.message ?? ""
+        content.sound = UNNotificationSound.default
+
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: alert.scheduledTime)
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: alert.repeatOption != .none)
+
+        let request = UNNotificationRequest(identifier: alert.id.uuidString, content: content, trigger: trigger)
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling notification: \(error)")
+            } else {
+                print("Notification scheduled for \(alert.scheduledTime)")
+            }
+        }
     }
 
     func deleteScheduledAlert(_ alert: ScheduledAlert) {
         scheduledAlerts.removeAll { $0.id == alert.id }
+        // Cancel the notification
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [alert.id.uuidString])
+    }
+
+    func deleteAlertHistory(_ alert: AlertEntry) {
+        alertHistory.removeAll { $0.id == alert.id }
+    }
+
+    func editScheduledAlert(_ alert: ScheduledAlert) {
+        alertToEdit = alert
+        showEditDialog = true
+    }
+
+    func updateScheduledAlert(_ alert: ScheduledAlert, title: String, message: String, time: Date, repeatOption: RepeatOption) {
+        if let index = scheduledAlerts.firstIndex(where: { $0.id == alert.id }) {
+            // Cancel old notification
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [alert.id.uuidString])
+
+            // Update alert
+            let updatedAlert = ScheduledAlert(
+                id: alert.id,
+                title: title,
+                message: message,
+                scheduledTime: time,
+                repeatOption: repeatOption
+            )
+            scheduledAlerts[index] = updatedAlert
+            scheduledAlerts.sort { $0.scheduledTime < $1.scheduledTime }
+
+            // Schedule new notification
+            scheduleNotification(for: updatedAlert)
+        }
     }
 
     private func generateSampleAlerts() {

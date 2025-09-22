@@ -24,28 +24,52 @@ struct SettingsView: View {
     }
 
     private var themeSettingsSection: some View {
-        HUDPanel(title: "Visual Mode") {
-            VStack(spacing: 12) {
+        HUDPanel(title: "HUD Color Scheme") {
+            VStack(spacing: 16) {
                 ForEach(CodecTheme.allCases, id: \.self) { theme in
-                    HStack {
-                        Text(theme.name)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
+                    VStack(spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(theme.name)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor)
+                                    .fontWeight(.bold)
 
-                        Spacer()
+                                Text(theme.description)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                            }
 
-                        Circle()
-                            .fill(theme.primaryColor)
-                            .frame(width: 12, height: 12)
+                            Spacer()
 
-                        if themeManager.currentTheme == theme {
-                            Text("ACTIVE")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(themeManager.successColor)
-                        } else {
-                            CodecButton(title: "SELECT", action: {
-                                themeManager.switchTheme(to: theme)
-                            }, style: .secondary, size: .small)
+                            // Color preview
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(theme.primaryColor)
+                                    .frame(width: 10, height: 10)
+                                Circle()
+                                    .fill(theme.accentColor)
+                                    .frame(width: 10, height: 10)
+                                Circle()
+                                    .fill(theme.secondaryColor)
+                                    .frame(width: 10, height: 10)
+                            }
+
+                            if themeManager.currentTheme == theme {
+                                Text("ACTIVE")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(themeManager.successColor)
+                                    .fontWeight(.bold)
+                            } else {
+                                CodecButton(title: "SELECT", action: {
+                                    themeManager.switchTheme(to: theme)
+                                }, style: .secondary, size: .small)
+                            }
+                        }
+
+                        if themeManager.currentTheme != theme {
+                            Divider()
+                                .background(themeManager.primaryColor.opacity(0.3))
                         }
                     }
                 }

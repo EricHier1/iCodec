@@ -29,6 +29,9 @@ struct MissionView: View {
 
                     // Mission queue
                     missionQueueSection
+
+                    // Completed missions
+                    completedMissionsSection
                 }
                 .padding(.horizontal, 16)
             }
@@ -109,20 +112,59 @@ struct MissionView: View {
             }
         }
     }
+
+    private var completedMissionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("COMPLETED MISSIONS")
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundColor(themeManager.successColor)
+                .fontWeight(.bold)
+
+            VStack(spacing: 8) {
+                ForEach(viewModel.completedMissions) { mission in
+                    MissionCard(mission: mission, isActive: false, isCompleted: true)
+                        .contextMenu {
+                            Button("Reactivate Mission", systemImage: "arrow.clockwise") {
+                                viewModel.reactivateMission(mission)
+                            }
+                            Button("Delete Mission", systemImage: "trash", role: .destructive) {
+                                viewModel.deleteMission(mission)
+                            }
+                        }
+                }
+
+                if viewModel.completedMissions.isEmpty {
+                    Text("No completed missions")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(themeManager.textColor.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .padding(16)
+                }
+            }
+        }
+    }
 }
 
 struct MissionCard: View {
     let mission: Mission
     let isActive: Bool
+    let isCompleted: Bool
     @EnvironmentObject private var themeManager: ThemeManager
+
+    init(mission: Mission, isActive: Bool, isCompleted: Bool = false) {
+        self.mission = mission
+        self.isActive = isActive
+        self.isCompleted = isCompleted
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(mission.name ?? "Untitled Mission")
                     .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(isActive ? themeManager.accentColor : themeManager.primaryColor)
+                    .foregroundColor(isCompleted ? themeManager.successColor : (isActive ? themeManager.accentColor : themeManager.primaryColor))
                     .fontWeight(.bold)
+                    .strikethrough(isCompleted)
 
                 Spacer()
 
@@ -387,6 +429,7 @@ struct CodecTextFieldStyle: TextFieldStyle {
 @MainActor
 class MissionViewModel: BaseViewModel {
     @Published var missions: [Mission] = []
+    @Published var completedMissions: [Mission] = []
     @Published var currentMission: Mission?
     @Published var showNewMissionDialog = false
     @Published var showEditMissionDialog = false
@@ -400,11 +443,21 @@ class MissionViewModel: BaseViewModel {
     }
 
     func fetchMissions() {
-        let request: NSFetchRequest<Mission> = Mission.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \Mission.timestamp, ascending: false)]
+        let context = persistenceController.container.viewContext
+
+        // Fetch active missions (not completed)
+        let activeMissionsRequest: NSFetchRequest<Mission> = Mission.fetchRequest()
+        activeMissionsRequest.predicate = NSPredicate(format: "status != %@", "completed")
+        activeMissionsRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Mission.timestamp, ascending: false)]
+
+        // Fetch completed missions
+        let completedMissionsRequest: NSFetchRequest<Mission> = Mission.fetchRequest()
+        completedMissionsRequest.predicate = NSPredicate(format: "status == %@", "completed")
+        completedMissionsRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Mission.timestamp, ascending: false)]
 
         do {
-            missions = try persistenceController.container.viewContext.fetch(request)
+            missions = try context.fetch(activeMissionsRequest)
+            completedMissions = try context.fetch(completedMissionsRequest)
         } catch {
             print("Error fetching missions: \(error)")
         }
@@ -447,9 +500,21 @@ class MissionViewModel: BaseViewModel {
         mission.priority = priority.rawValue
         mission.progress = progress
 
+        // Update status based on progress
+        if progress >= 100.0 {
+            mission.status = "completed"
+        } else if progress > 0 {
+            mission.status = "in_progress"
+        } else {
+            mission.status = "pending"
+        }
+
         do {
             try context.save()
-            fetchMissions()
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+                self.fetchMissions()
+            }
         } catch {
             print("Error updating mission: \(error)")
         }
@@ -479,6 +544,22 @@ class MissionViewModel: BaseViewModel {
             }
         } catch {
             print("Error deleting mission: \(error)")
+        }
+    }
+
+    func reactivateMission(_ mission: Mission) {
+        let context = persistenceController.container.viewContext
+        mission.status = "pending"
+        mission.progress = 0.0
+
+        do {
+            try context.save()
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+                self.fetchMissions()
+            }
+        } catch {
+            print("Error reactivating mission: \(error)")
         }
     }
 }

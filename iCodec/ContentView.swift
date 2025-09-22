@@ -71,14 +71,32 @@ struct ContentView: View {
 
                 Spacer()
 
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(themeManager.successColor)
-                        .frame(width: 6, height: 6)
+                HStack(spacing: 8) {
+                    // Theme indicator
+                    Button(action: {
+                        let currentIndex = CodecTheme.allCases.firstIndex(of: themeManager.currentTheme) ?? 0
+                        let nextIndex = (currentIndex + 1) % CodecTheme.allCases.count
+                        themeManager.switchTheme(to: CodecTheme.allCases[nextIndex])
+                    }) {
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(themeManager.primaryColor)
+                                .frame(width: 6, height: 6)
+                            Text(themeManager.currentTheme.name.uppercased())
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(themeManager.primaryColor)
+                        }
+                    }
 
-                    Text("ONLINE")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(themeManager.successColor)
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(themeManager.successColor)
+                            .frame(width: 6, height: 6)
+
+                        Text("ONLINE")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.successColor)
+                    }
                 }
             }
 
