@@ -8,57 +8,8 @@ struct MapView: View {
 
     var body: some View {
         ZStack {
-            // Map background
-            Map(position: $viewModel.cameraPosition) {
-                ForEach(viewModel.waypoints) { waypoint in
-                    Annotation(waypoint.name.isEmpty ? waypoint.id : waypoint.name, coordinate: waypoint.coordinate) {
-                        WaypointMarker(waypoint: waypoint, themeManager: themeManager)
-                            .onTapGesture {
-                                viewModel.selectWaypoint(waypoint)
-                            }
-                    }
-                }
-
-                // User location marker
-                if let userLocation = viewModel.userLocation {
-                    Marker("YOU", coordinate: userLocation)
-                        .tint(themeManager.successColor)
-                }
-
-                // Preview marker for where next waypoint will be placed
-                if viewModel.showPreviewMarker {
-                    Marker("?", coordinate: viewModel.mapCenter)
-                        .tint(themeManager.primaryColor.opacity(0.6))
-                }
-            }
-            .mapStyle(viewModel.currentMapStyle)
-            .onMapCameraChange { context in
-                viewModel.updateMapCenter(context.region.center)
-            }
-            .mapControlVisibility(.hidden)
-            .ignoresSafeArea()
-            .colorScheme(viewModel.currentMode == .dark ? .dark : .light)
-            .overlay(
-                // Tactical grid overlay
-                TacticalGridOverlay()
-                    .opacity(viewModel.currentMode == .tactical || viewModel.currentMode == .dark ? 0.1 : 0)
-                    .allowsHitTesting(false)
-            )
-
-            // HUD Overlay
-            VStack {
-                // Top status bar
-                topStatusBar
-
-                Spacer()
-
-                // Bottom controls
-                bottomControls
-            }
-            .overlay(
-                ScanlineOverlay()
-                    .opacity(0.2)
-            )
+            mapSurface
+            hudOverlay
         }
         .onAppear {
             viewModel.requestLocationPermission()
@@ -68,124 +19,314 @@ struct MapView: View {
         }
     }
 
-    private func markerColor(for waypoint: Waypoint) -> Color {
-        switch waypoint.type {
-        case .objective:
-            return themeManager.errorColor
-        case .checkpoint:
-            return themeManager.warningColor
-        case .intel:
-            return themeManager.accentColor
-        case .extraction:
-            return themeManager.successColor
+    private var mapSurface: some View {
+        Map(position: $viewModel.cameraPosition) {
+            ForEach(viewModel.waypoints) { waypoint in
+                Annotation(waypoint.name.isEmpty ? waypoint.id : waypoint.name, coordinate: waypoint.coordinate) {
+                    WaypointMarker(waypoint: waypoint, themeManager: themeManager)
+                        .onTapGesture {
+                            viewModel.selectWaypoint(waypoint)
+                        }
+                }
+                .annotationTitles(.hidden)
+            }
+
+            if let userLocation = viewModel.userLocation {
+                Annotation("Agent", coordinate: userLocation) {
+                    UserLocationMarker(primaryColor: themeManager.successColor, accentColor: themeManager.primaryColor)
+                }
+                .annotationTitles(.hidden)
+            }
+
+            if viewModel.showPreviewMarker {
+                Annotation("Designator", coordinate: viewModel.mapCenter) {
+                    PreviewWaypointMarker(primaryColor: themeManager.primaryColor)
+                }
+                .annotationTitles(.hidden)
+            }
         }
+        .mapStyle(viewModel.currentMapStyle)
+        .onMapCameraChange { context in
+            viewModel.updateCameraRegion(context.region)
+        }
+        .mapControlVisibility(.hidden)
+        .ignoresSafeArea()
+        .colorScheme(viewModel.currentMode == .dark ? .dark : .light)
+        .overlay(
+            TacticalGridOverlay()
+                .opacity(viewModel.currentMode == .tactical || viewModel.currentMode == .dark ? 0.1 : 0)
+                .allowsHitTesting(false)
+        )
     }
 
-    private var topStatusBar: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("TACTICAL MAP")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
+    private var hudOverlay: some View {
+        VStack {
+            HStack(alignment: .top, spacing: 16) {
+                statusPanel
+                    .frame(maxWidth: 280)
 
-                Text("SCALE: \(viewModel.scaleText)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(themeManager.textColor)
+                Spacer(minLength: 12)
+
+                modePanel
+                    .frame(width: 220)
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("WAYPOINTS: \(viewModel.waypoints.count)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(themeManager.accentColor)
+            HStack(alignment: .bottom, spacing: 16) {
+                commandPanel
+                    .frame(maxWidth: 360)
 
-                Text("MODE: \(viewModel.currentMode.rawValue)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(themeManager.successColor)
+                Spacer(minLength: 12)
+
+                intelPanel
+                    .frame(width: 240)
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .background(themeManager.backgroundColor.opacity(0.7))
+        .padding(.vertical, 24)
+        .overlay(
+            ScanlineOverlay()
+                .opacity(0.15)
+                .allowsHitTesting(false)
+        )
     }
 
-    private var bottomControls: some View {
-        VStack(spacing: 12) {
-            // Top row of controls
-            HStack(spacing: 16) {
-                // Mode toggle
-                CodecButton(title: "MODE", action: {
-                    viewModel.cycleMode()
-                }, style: .secondary, size: .small)
-
-                // Center on user
-                CodecButton(title: "MY POS", action: {
-                    viewModel.centerOnUser()
-                }, style: .primary, size: .small)
-
-                // Add waypoint
-                CodecButton(title: viewModel.showPreviewMarker ? "PLACE" : "MARK", action: {
-                    if viewModel.showPreviewMarker {
-                        viewModel.addWaypoint()
-                    } else {
-                        viewModel.togglePreviewMarker()
-                    }
-                }, style: viewModel.showPreviewMarker ? .primary : .secondary, size: .small)
-
-                // Clear all waypoints
-                CodecButton(title: "CLEAR", action: {
-                    viewModel.deleteAllWaypoints()
-                }, style: .secondary, size: .small)
-            }
-
-            // Bottom row with zoom controls
-            HStack(spacing: 20) {
-                // Zoom controls
-                HStack(spacing: 12) {
-                    Button(action: { viewModel.zoomOut() }) {
-                        Text("−")
-                            .foregroundColor(themeManager.primaryColor)
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .frame(width: 32, height: 32)
-                            .background(themeManager.surfaceColor.opacity(0.3))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(themeManager.primaryColor, lineWidth: 1)
-                            )
-                    }
-
-                    Button(action: { viewModel.zoomIn() }) {
-                        Text("+")
-                            .foregroundColor(themeManager.primaryColor)
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .frame(width: 32, height: 32)
-                            .background(themeManager.surfaceColor.opacity(0.3))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(themeManager.primaryColor, lineWidth: 1)
-                            )
-                    }
-                }
-
-                Spacer()
-
-                // Map type indicator
-                Text(viewModel.currentMode.rawValue)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(themeManager.surfaceColor.opacity(0.3))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(themeManager.primaryColor, lineWidth: 1)
-                    )
+    private var statusPanel: some View {
+        MapHUDCard(title: "Current Position") {
+            VStack(alignment: .leading, spacing: 6) {
+                hudReadout(label: "LAT", value: formattedCoordinate(viewModel.userLocation?.latitude, axis: .latitude))
+                hudReadout(label: "LON", value: formattedCoordinate(viewModel.userLocation?.longitude, axis: .longitude))
+                hudReadout(label: "ALT", value: formattedAltitude())
+                hudReadout(label: "ACCURACY", value: formattedAccuracy())
             }
         }
-        .padding(.bottom, 30)
-        .padding(.horizontal, 20)
-        .background(themeManager.backgroundColor.opacity(0.7))
+    }
+
+    private var modePanel: some View {
+        MapHUDCard(title: "Display Mode") {
+            VStack(alignment: .leading, spacing: 12) {
+                hudReadout(label: "ACTIVE", value: viewModel.currentMode.rawValue)
+
+                CodecButton(title: "CYCLE MODES", action: {
+                    viewModel.cycleMode()
+                }, style: .secondary, size: .fullWidth)
+            }
+        }
+    }
+
+    private var commandPanel: some View {
+        MapHUDCard(title: "Command Console") {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    CodecButton(title: "MY POS", action: {
+                        viewModel.centerOnUser()
+                    }, style: .primary, size: .small)
+
+                    CodecButton(title: viewModel.showPreviewMarker ? "CONFIRM MARK" : "DROP WAYPOINT", action: {
+                        viewModel.addWaypoint()
+                    }, style: .primary, size: .small)
+                }
+
+                HStack(spacing: 12) {
+                    CodecButton(
+                        title: viewModel.showPreviewMarker ? "HIDE PREVIEW" : "PREVIEW TARGET",
+                        action: {
+                            viewModel.togglePreviewMarker()
+                        },
+                        style: viewModel.showPreviewMarker ? .primary : .secondary,
+                        size: .small
+                    )
+
+                    CodecButton(title: "CLEAR ALL", action: {
+                        viewModel.deleteAllWaypoints()
+                    }, style: .destructive, size: .small)
+                }
+
+                Divider()
+                    .background(themeManager.primaryColor.opacity(0.3))
+
+                HStack(spacing: 12) {
+                    ZoomCommandButton(symbol: "−", action: {
+                        viewModel.zoomOut()
+                    }, themeManager: themeManager)
+
+                    ZoomCommandButton(symbol: "+", action: {
+                        viewModel.zoomIn()
+                    }, themeManager: themeManager)
+
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var intelPanel: some View {
+        MapHUDCard(title: "Map Intel") {
+            VStack(alignment: .leading, spacing: 6) {
+                hudReadout(label: "WAYPOINTS", value: "\(viewModel.waypoints.count)")
+                hudReadout(label: "SCALE", value: viewModel.scaleText)
+                hudReadout(label: "CROSS LAT", value: formattedCoordinate(viewModel.mapCenter.latitude, axis: .latitude))
+                hudReadout(label: "CROSS LON", value: formattedCoordinate(viewModel.mapCenter.longitude, axis: .longitude))
+
+                if let selected = viewModel.selectedWaypoint {
+                    hudReadout(label: "SELECTED", value: selected.name)
+                }
+            }
+        }
+    }
+
+    private func hudReadout(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(themeManager.accentColor)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(themeManager.textColor)
+        }
+    }
+
+    private enum CoordinateAxis {
+        case latitude
+        case longitude
+    }
+
+    private func formattedCoordinate(_ value: CLLocationDegrees?, axis: CoordinateAxis) -> String {
+        guard let value = value else { return "—" }
+
+        let direction: String
+        switch axis {
+        case .latitude:
+            direction = value >= 0 ? "N" : "S"
+        case .longitude:
+            direction = value >= 0 ? "E" : "W"
+        }
+
+        return String(format: "%.4f° %@", abs(value), direction)
+    }
+
+    private func formattedCoordinate(_ value: CLLocationDegrees, axis: CoordinateAxis) -> String {
+        formattedCoordinate(Optional(value), axis: axis)
+    }
+
+    private func formattedAltitude() -> String {
+        guard let altitude = viewModel.lastKnownLocation?.altitude else { return "—" }
+        return String(format: "%.0f m", altitude)
+    }
+
+    private func formattedAccuracy() -> String {
+        guard let accuracy = viewModel.lastKnownLocation?.horizontalAccuracy else { return "—" }
+        if accuracy < 0 {
+            return "—"
+        }
+        return String(format: "±%.0f m", accuracy)
+    }
+}
+
+private struct MapHUDCard<Content: View>: View {
+    let title: String
+    let content: Content
+
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title.uppercased())
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(themeManager.primaryColor)
+
+            content
+        }
+        .padding(16)
+        .background(themeManager.backgroundColor.opacity(0.65))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+        )
+        .overlay(
+            ScanlineOverlay()
+                .opacity(0.2)
+        )
+        .cornerRadius(8)
+    }
+}
+
+private struct ZoomCommandButton: View {
+    let symbol: String
+    let action: () -> Void
+    let themeManager: ThemeManager
+
+    var body: some View {
+        Button(action: action) {
+            Text(symbol)
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .frame(width: 36, height: 36)
+                .foregroundColor(themeManager.primaryColor)
+                .background(themeManager.surfaceColor.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(themeManager.primaryColor, lineWidth: 1)
+                )
+                .overlay(
+                    ScanlineOverlay()
+                        .opacity(0.3)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct UserLocationMarker: View {
+    let primaryColor: Color
+    let accentColor: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(accentColor.opacity(0.4), lineWidth: 2)
+                .frame(width: 36, height: 36)
+
+            Circle()
+                .stroke(accentColor.opacity(0.2), lineWidth: 2)
+                .frame(width: 52, height: 52)
+
+            Circle()
+                .fill(primaryColor)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Circle()
+                        .stroke(accentColor, lineWidth: 2)
+                )
+        }
+    }
+}
+
+private struct PreviewWaypointMarker: View {
+    let primaryColor: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(primaryColor.opacity(0.6), lineWidth: 1)
+                .frame(width: 28, height: 28)
+
+            Rectangle()
+                .fill(primaryColor.opacity(0.8))
+                .frame(width: 2, height: 20)
+
+            Rectangle()
+                .fill(primaryColor.opacity(0.8))
+                .frame(width: 20, height: 2)
+        }
     }
 }
 
@@ -240,13 +381,14 @@ class MapViewModel: BaseViewModel {
 
     @Published var waypoints: [Waypoint] = []
     @Published var currentMode: MapMode = .tactical
-    @Published var scaleText = "1:1000"
+    @Published var scaleText = "≈1.1 km"
     @Published var userLocation: CLLocationCoordinate2D?
     @Published var showPreviewMarker = false
     @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
     @Published var hasInitialLocation = false
     @Published var selectedWaypoint: Waypoint?
     @Published var showWaypointEditor = false
+    @Published var lastKnownLocation: CLLocation?
 
     private let locationManager = CLLocationManager()
     private var locationDelegate: MapLocationDelegate?
@@ -275,6 +417,7 @@ class MapViewModel: BaseViewModel {
         super.init()
         setupLocationManager()
         generateSampleWaypoints()
+        updateScaleText(for: region)
         requestLocationPermission()
     }
 
@@ -284,6 +427,8 @@ class MapViewModel: BaseViewModel {
         }
         locationManager.delegate = locationDelegate
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.distanceFilter = 5
+        locationManager.pausesLocationUpdatesAutomatically = false
     }
 
     func requestLocationPermission() {
@@ -292,6 +437,7 @@ class MapViewModel: BaseViewModel {
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
             locationManager.startUpdatingLocation()
+            locationManager.requestLocation()
         default:
             break
         }
@@ -299,6 +445,7 @@ class MapViewModel: BaseViewModel {
 
     private func updateRegion(with location: CLLocation) {
         userLocation = location.coordinate
+        lastKnownLocation = location
 
         // Always center the map on the user's location when we first get it
         if !hasInitialLocation {
@@ -310,13 +457,14 @@ class MapViewModel: BaseViewModel {
                 self.region = newRegion
                 self.cameraPosition = .region(newRegion)
                 self.updateMapCenter()
+                self.updateScaleText(for: newRegion)
                 self.hasInitialLocation = true
             }
         }
     }
 
     func centerOnUser() {
-        if let location = locationManager.location {
+        if let location = lastKnownLocation ?? locationManager.location {
             withAnimation(.easeInOut(duration: 0.5)) {
                 let newRegion = MKCoordinateRegion(
                     center: location.coordinate,
@@ -325,6 +473,7 @@ class MapViewModel: BaseViewModel {
                 region = newRegion
                 cameraPosition = .region(newRegion)
                 updateMapCenter()
+                updateScaleText(for: newRegion)
             }
         } else if let userLoc = userLocation {
             withAnimation(.easeInOut(duration: 0.5)) {
@@ -335,6 +484,7 @@ class MapViewModel: BaseViewModel {
                 region = newRegion
                 cameraPosition = .region(newRegion)
                 updateMapCenter()
+                updateScaleText(for: newRegion)
             }
         } else {
             // Request location again if we don't have it
@@ -342,30 +492,33 @@ class MapViewModel: BaseViewModel {
         }
     }
 
+    func updateCameraRegion(_ region: MKCoordinateRegion) {
+        self.region = region
+        mapCenter = region.center
+        cameraPosition = .region(region)
+        updateScaleText(for: region)
+    }
+
     private func updateMapCenter() {
         mapCenter = region.center
     }
 
-    func updateMapCenter(_ coordinate: CLLocationCoordinate2D) {
-        mapCenter = coordinate
-    }
-
     func zoomIn() {
         withAnimation(.easeInOut(duration: 0.3)) {
-            region.span.latitudeDelta *= 0.5
-            region.span.longitudeDelta *= 0.5
+            region.span.latitudeDelta = max(region.span.latitudeDelta * 0.5, 0.0005)
+            region.span.longitudeDelta = max(region.span.longitudeDelta * 0.5, 0.0005)
             cameraPosition = .region(region)
-            updateScaleText()
+            updateScaleText(for: region)
             updateMapCenter()
         }
     }
 
     func zoomOut() {
         withAnimation(.easeInOut(duration: 0.3)) {
-            region.span.latitudeDelta *= 2.0
-            region.span.longitudeDelta *= 2.0
+            region.span.latitudeDelta = min(region.span.latitudeDelta * 2.0, 10)
+            region.span.longitudeDelta = min(region.span.longitudeDelta * 2.0, 10)
             cameraPosition = .region(region)
-            updateScaleText()
+            updateScaleText(for: region)
             updateMapCenter()
         }
     }
@@ -413,9 +566,15 @@ class MapViewModel: BaseViewModel {
         waypoints.removeAll()
     }
 
-    private func updateScaleText() {
-        let scale = Int(region.span.latitudeDelta * 100000)
-        scaleText = "1:\(scale)"
+    private func updateScaleText(for region: MKCoordinateRegion? = nil) {
+        let referenceRegion = region ?? self.region
+        let meters = referenceRegion.span.latitudeDelta * 111_139
+
+        if meters >= 1000 {
+            scaleText = String(format: "≈%.1f km", meters / 1000)
+        } else {
+            scaleText = String(format: "≈%.0f m", meters)
+        }
     }
 
     private func generateSampleWaypoints() {
@@ -451,10 +610,15 @@ private class MapLocationDelegate: NSObject, CLLocationManagerDelegate {
         locationUpdate(location)
     }
 
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // CLLocationManager requires delegates to handle failures even if we ignore them.
+    }
+
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         switch status {
         case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()
+            manager.requestLocation()
         default:
             break
         }
