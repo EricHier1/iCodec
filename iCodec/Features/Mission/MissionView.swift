@@ -271,7 +271,7 @@ struct ActiveMissionControls: View {
                         Text("Progress")
                     }
                     .tint(themeManager.primaryColor)
-                    .onChange(of: progressValue) { newValue in
+                    .onChange(of: progressValue) { _, newValue in
                         guard abs(mission.progress - newValue) >= 1 else { return }
                         viewModel.updateMissionProgress(mission, progress: newValue)
                     }
@@ -306,7 +306,7 @@ struct ActiveMissionControls: View {
         .onAppear {
             progressValue = mission.progress
         }
-        .onChange(of: mission.progress) { newValue in
+        .onChange(of: mission.progress) { _, newValue in
             if progressValue != newValue {
                 progressValue = newValue
             }
