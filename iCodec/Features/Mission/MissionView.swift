@@ -2,7 +2,7 @@ import SwiftUI
 import CoreData
 
 struct MissionView: View {
-    @StateObject private var viewModel = MissionViewModel()
+    @ObservedObject private var viewModel = SharedDataManager.shared.missionViewModel
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {
@@ -458,6 +458,7 @@ class MissionViewModel: BaseViewModel {
         do {
             missions = try context.fetch(activeMissionsRequest)
             completedMissions = try context.fetch(completedMissionsRequest)
+            currentMission = missions.first(where: { $0.status == "active" })
         } catch {
             print("Error fetching missions: \(error)")
         }
@@ -472,11 +473,14 @@ class MissionViewModel: BaseViewModel {
         newMission.missionDescription = description
         newMission.priority = priority.rawValue
         newMission.progress = progress
-        newMission.status = "pending"
+        newMission.status = currentMission == nil ? "active" : status(for: newMission, progress: progress)
         newMission.timestamp = Date()
 
         do {
             try context.save()
+            if currentMission == nil {
+                currentMission = newMission
+            }
             fetchMissions()
         } catch {
             print("Error saving mission: \(error)")
@@ -484,7 +488,29 @@ class MissionViewModel: BaseViewModel {
     }
 
     func setCurrentMission(_ mission: Mission) {
+        let context = persistenceController.container.viewContext
+
+        if currentMission?.objectID == mission.objectID {
+            return
+        }
+
+        if let activeMission = currentMission, activeMission.objectID != mission.objectID {
+            if activeMission.progress >= 100.0 {
+                activeMission.status = "completed"
+            } else {
+                activeMission.status = activeMission.progress > 0 ? "in_progress" : "pending"
+            }
+        }
+
         currentMission = mission
+        mission.status = "active"
+
+        do {
+            try context.save()
+            fetchMissions()
+        } catch {
+            print("Error setting current mission: \(error)")
+        }
     }
 
     func editMission(_ mission: Mission) {
@@ -499,14 +525,10 @@ class MissionViewModel: BaseViewModel {
         mission.missionDescription = description
         mission.priority = priority.rawValue
         mission.progress = progress
+        mission.status = status(for: mission, progress: progress)
 
-        // Update status based on progress
-        if progress >= 100.0 {
-            mission.status = "completed"
-        } else if progress > 0 {
-            mission.status = "in_progress"
-        } else {
-            mission.status = "pending"
+        if mission.status == "completed" && currentMission?.objectID == mission.objectID {
+            currentMission = nil
         }
 
         do {
@@ -562,6 +584,20 @@ class MissionViewModel: BaseViewModel {
             print("Error reactivating mission: \(error)")
         }
     }
+
+    private func status(for mission: Mission, progress: Double? = nil) -> String {
+        let progressValue = progress ?? mission.progress
+
+        if progressValue >= 100.0 {
+            return "completed"
+        }
+
+        if currentMission?.objectID == mission.objectID {
+            return "active"
+        }
+
+        return progressValue > 0 ? "in_progress" : "pending"
+    }
 }
 
 enum Priority: String, CaseIterable {
@@ -579,4 +615,3 @@ enum Priority: String, CaseIterable {
         }
     }
 }
-

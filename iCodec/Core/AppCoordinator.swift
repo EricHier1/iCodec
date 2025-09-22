@@ -36,6 +36,7 @@ enum AppModule: String, CaseIterable {
     case intel = "INTEL"
     case alerts = "ALERTS"
     case audio = "AUDIO"
+    case settings = "SETTINGS"
 
     var glyph: String {
         switch self {
@@ -44,6 +45,7 @@ enum AppModule: String, CaseIterable {
         case .intel: return "INT"
         case .alerts: return "ALR"
         case .audio: return "COM"
+        case .settings: return "SET"
         }
     }
 }

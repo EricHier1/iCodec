@@ -27,6 +27,7 @@
 		1A000038000000000000001 /* MissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000039000000000000001 /* MissionView.swift */; };
 		1A00003A000000000000001 /* IntelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00003B000000000000001 /* IntelView.swift */; };
 		1A00003C000000000000001 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00003D000000000000001 /* AlertsView.swift */; };
+		1A000050000000000000001 /* SharedDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000051000000000000001 /* SharedDataManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +53,7 @@
 		1A000039000000000000001 /* MissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionView.swift; sourceTree = "<group>"; };
 		1A00003B000000000000001 /* IntelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelView.swift; sourceTree = "<group>"; };
 		1A00003D000000000000001 /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
+		1A000051000000000000001 /* SharedDataManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDataManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -105,6 +107,7 @@
 				1A000021000000000000001 /* PersistenceController.swift */,
 				1A000023000000000000001 /* BaseViewModel.swift */,
 				1A000025000000000000001 /* AppCoordinator.swift */,
+				1A000051000000000000001 /* SharedDataManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -305,6 +308,7 @@
 				1A000020000000000000001 /* PersistenceController.swift in Sources */,
 				1A000022000000000000001 /* BaseViewModel.swift in Sources */,
 				1A000024000000000000001 /* AppCoordinator.swift in Sources */,
+				1A000050000000000000001 /* SharedDataManager.swift in Sources */,
 				1A000026000000000000001 /* ThemeManager.swift in Sources */,
 				1A000028000000000000001 /* CodecButton.swift in Sources */,
 				1A00002A000000000000001 /* HUDPanel.swift in Sources */,

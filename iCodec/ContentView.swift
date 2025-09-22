@@ -72,6 +72,22 @@ struct ContentView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            coordinator.currentModule = .settings
+                        }
+                    }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(themeManager.primaryColor)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(themeManager.primaryColor, lineWidth: 1)
+                            )
+                    }
+                    .accessibilityLabel("Open Settings")
+
                     // Theme indicator
                     Button(action: {
                         let currentIndex = CodecTheme.allCases.firstIndex(of: themeManager.currentTheme) ?? 0
@@ -147,6 +163,8 @@ struct ContentView: View {
                 AlertsView()
             case .audio:
                 AudioView()
+            case .settings:
+                SettingsView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

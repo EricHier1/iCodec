@@ -3,7 +3,7 @@ import UserNotifications
 import AVFoundation
 
 struct AlertsView: View {
-    @StateObject private var viewModel = AlertsViewModel()
+    @ObservedObject private var viewModel = SharedDataManager.shared.alertsViewModel
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {
@@ -381,10 +381,19 @@ class AlertsViewModel: BaseViewModel {
     @Published var showEditDialog = false
     @Published var alertToEdit: ScheduledAlert?
 
+    private let scheduledAlertsStorageKey = "com.erichier.iccodec.alerts.scheduled"
+    private let alertHistoryStorageKey = "com.erichier.iccodec.alerts.history"
+    private let userDefaults = UserDefaults.standard
+
     override init() {
         super.init()
-        generateSampleAlerts()
         requestNotificationPermission()
+        loadPersistedAlerts()
+
+        if alertHistory.isEmpty {
+            alertHistory = sampleAlertHistory()
+            persistAlertHistory()
+        }
     }
 
     private func requestNotificationPermission() {
@@ -406,6 +415,7 @@ class AlertsViewModel: BaseViewModel {
             priority: .medium
         )
         alertHistory.insert(testAlert, at: 0)
+        persistAlertHistory()
 
         // Send immediate test notification
         let content = UNMutableNotificationContent()
@@ -433,6 +443,7 @@ class AlertsViewModel: BaseViewModel {
         )
         scheduledAlerts.append(scheduledAlert)
         scheduledAlerts.sort { $0.scheduledTime < $1.scheduledTime }
+        persistScheduledAlerts()
 
         // Schedule actual notification
         scheduleNotification(for: scheduledAlert)
@@ -462,12 +473,14 @@ class AlertsViewModel: BaseViewModel {
 
     func deleteScheduledAlert(_ alert: ScheduledAlert) {
         scheduledAlerts.removeAll { $0.id == alert.id }
+        persistScheduledAlerts()
         // Cancel the notification
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [alert.id.uuidString])
     }
 
     func deleteAlertHistory(_ alert: AlertEntry) {
         alertHistory.removeAll { $0.id == alert.id }
+        persistAlertHistory()
     }
 
     func editScheduledAlert(_ alert: ScheduledAlert) {
@@ -490,14 +503,66 @@ class AlertsViewModel: BaseViewModel {
             )
             scheduledAlerts[index] = updatedAlert
             scheduledAlerts.sort { $0.scheduledTime < $1.scheduledTime }
+            persistScheduledAlerts()
 
             // Schedule new notification
             scheduleNotification(for: updatedAlert)
         }
     }
 
-    private func generateSampleAlerts() {
-        alertHistory = [
+    private func loadPersistedAlerts() {
+        let decoder = JSONDecoder()
+
+        if let scheduledData = userDefaults.data(forKey: scheduledAlertsStorageKey) {
+            do {
+                scheduledAlerts = try decoder.decode([ScheduledAlert].self, from: scheduledData)
+                scheduledAlerts.forEach { scheduleNotification(for: $0) }
+            } catch {
+                print("Error decoding scheduled alerts: \(error)")
+            }
+        }
+
+        if let historyData = userDefaults.data(forKey: alertHistoryStorageKey) {
+            do {
+                alertHistory = try decoder.decode([AlertEntry].self, from: historyData)
+            } catch {
+                print("Error decoding alert history: \(error)")
+            }
+        }
+    }
+
+    private func persistScheduledAlerts() {
+        let encoder = JSONEncoder()
+
+        do {
+            if scheduledAlerts.isEmpty {
+                userDefaults.removeObject(forKey: scheduledAlertsStorageKey)
+            } else {
+                let data = try encoder.encode(scheduledAlerts)
+                userDefaults.set(data, forKey: scheduledAlertsStorageKey)
+            }
+        } catch {
+            print("Error encoding scheduled alerts: \(error)")
+        }
+    }
+
+    private func persistAlertHistory() {
+        let encoder = JSONEncoder()
+
+        do {
+            if alertHistory.isEmpty {
+                userDefaults.removeObject(forKey: alertHistoryStorageKey)
+            } else {
+                let data = try encoder.encode(alertHistory)
+                userDefaults.set(data, forKey: alertHistoryStorageKey)
+            }
+        } catch {
+            print("Error encoding alert history: \(error)")
+        }
+    }
+
+    private func sampleAlertHistory() -> [AlertEntry] {
+        [
             AlertEntry(
                 id: UUID(),
                 title: "Mission Update",
@@ -516,7 +581,7 @@ class AlertsViewModel: BaseViewModel {
     }
 }
 
-struct AlertEntry: Identifiable {
+struct AlertEntry: Identifiable, Codable {
     let id: UUID
     let title: String
     let message: String?
@@ -524,7 +589,7 @@ struct AlertEntry: Identifiable {
     let priority: AlertPriority
 }
 
-struct ScheduledAlert: Identifiable {
+struct ScheduledAlert: Identifiable, Codable {
     let id: UUID
     let title: String
     let message: String?
@@ -537,7 +602,7 @@ enum AlertTab: String, CaseIterable {
     case scheduled = "SCHEDULED ALERTS"
 }
 
-enum AlertPriority {
+enum AlertPriority: String, Codable {
     case low, medium, high, critical
 
     var color: Color {
@@ -550,7 +615,7 @@ enum AlertPriority {
     }
 }
 
-enum RepeatOption: String, CaseIterable {
+enum RepeatOption: String, CaseIterable, Codable {
     case none = "No repeat"
     case daily = "Daily"
     case weekly = "Weekly"

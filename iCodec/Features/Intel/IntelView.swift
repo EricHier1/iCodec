@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct IntelView: View {
-    @StateObject private var viewModel = IntelViewModel()
+    @ObservedObject private var viewModel = SharedDataManager.shared.intelViewModel
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {

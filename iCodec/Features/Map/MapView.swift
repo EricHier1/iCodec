@@ -3,7 +3,7 @@ import MapKit
 import CoreLocation
 
 struct MapView: View {
-    @StateObject private var viewModel = MapViewModel()
+    @ObservedObject private var viewModel = SharedDataManager.shared.mapViewModel
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {
