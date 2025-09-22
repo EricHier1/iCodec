@@ -7,6 +7,7 @@ struct MapView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @State private var showMapActions = false
 
     var body: some View {
         ZStack {
@@ -15,9 +16,20 @@ struct MapView: View {
         }
         .onAppear {
             viewModel.requestLocationPermission()
+            viewModel.centerOnUser()
         }
         .sheet(isPresented: $viewModel.showWaypointEditor) {
             WaypointEditorSheet(viewModel: viewModel)
+        }
+        .confirmationDialog("Map Actions", isPresented: $showMapActions, titleVisibility: .visible) {
+            Button("Clear all waypoints", role: .destructive) {
+                TacticalSoundPlayer.playAction()
+                viewModel.deleteAllWaypoints()
+            }
+
+            Button("Cancel", role: .cancel) {
+                TacticalSoundPlayer.playNavigation()
+            }
         }
     }
 
@@ -120,16 +132,10 @@ struct MapView: View {
                 }
             }
 
-            Menu {
-                Button(role: .destructive) {
-                    viewModel.deleteAllWaypoints()
-                } label: {
-                    Label("Clear all waypoints", systemImage: "trash")
-                }
-            } label: {
-                ControlMenuLabel(text: "MORE")
-            }
-            .menuStyle(.borderlessButton)
+            CodecButton(title: "MORE", action: {
+                TacticalSoundPlayer.playNavigation()
+                showMapActions = true
+            }, style: .secondary, size: .small)
             .disabled(viewModel.waypoints.isEmpty)
         }
     }
