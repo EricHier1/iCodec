@@ -39,18 +39,18 @@ struct HUDView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("CODEC LINK ESTABLISHED")
-                        .font(.system(size: 14, family: .monospaced))
+                        .font(.system(size: 14, design: .monospaced))
                         .foregroundColor(themeManager.successColor)
 
                     Spacer()
 
                     Text(DateFormatter.hudFormatter.string(from: Date()))
-                        .font(.system(size: 12, family: .monospaced))
+                        .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(themeManager.textColor)
                 }
 
                 Text("Tactical Espionage Terminal Active")
-                    .font(.system(size: 10, family: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(themeManager.textColor.opacity(0.7))
             }
         }
@@ -63,15 +63,15 @@ struct HUDView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("SWEEP: ACTIVE")
-                        .font(.system(size: 10, family: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(themeManager.successColor)
 
                     Text("RANGE: 100M")
-                        .font(.system(size: 10, family: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(themeManager.textColor)
 
                     Text("CONTACTS: \(viewModel.detectedContacts)")
-                        .font(.system(size: 10, family: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(themeManager.accentColor)
                 }
 
@@ -87,11 +87,11 @@ struct HUDView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("LAT: \(String(format: "%.6f", location.coordinate.latitude))")
-                                .font(.system(size: 12, family: .monospaced))
+                                .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.textColor)
 
                             Text("LON: \(String(format: "%.6f", location.coordinate.longitude))")
-                                .font(.system(size: 12, family: .monospaced))
+                                .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.textColor)
                         }
 
@@ -99,29 +99,29 @@ struct HUDView: View {
 
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("ALT: \(String(format: "%.1f", location.altitude))M")
-                                .font(.system(size: 12, family: .monospaced))
+                                .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.textColor)
 
                             Text("ACC: ±\(String(format: "%.1f", location.horizontalAccuracy))M")
-                                .font(.system(size: 12, family: .monospaced))
+                                .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.textColor)
                         }
                     }
 
                     HStack {
                         Text("HEADING: \(String(format: "%.0f", viewModel.heading))°")
-                            .font(.system(size: 12, family: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(themeManager.accentColor)
 
                         Spacer()
 
                         Text("SPEED: \(String(format: "%.1f", location.speed))M/S")
-                            .font(.system(size: 12, family: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(themeManager.textColor)
                     }
                 } else {
                     Text("ACQUIRING GPS SIGNAL...")
-                        .font(.system(size: 12, family: .monospaced))
+                        .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(themeManager.warningColor)
                 }
             }
@@ -132,15 +132,15 @@ struct HUDView: View {
         HUDPanel(title: "Active Mission") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Operation: Silent Eagle")
-                    .font(.system(size: 14, family: .monospaced))
+                    .font(.system(size: 14, design: .monospaced))
                     .foregroundColor(themeManager.primaryColor)
 
                 Text("Status: In Progress")
-                    .font(.system(size: 12, family: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(themeManager.successColor)
 
                 Text("Objective: Infiltrate facility without detection")
-                    .font(.system(size: 10, family: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(themeManager.textColor.opacity(0.8))
             }
         }
@@ -160,7 +160,7 @@ struct HUDView: View {
     private func statusRow(_ system: String, status: String, color: Color) -> some View {
         HStack {
             Text(system)
-                .font(.system(size: 10, family: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(themeManager.textColor)
 
             Spacer()
@@ -170,7 +170,7 @@ struct HUDView: View {
                 .frame(width: 6, height: 6)
 
             Text(status)
-                .font(.system(size: 10, family: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(color)
         }
     }

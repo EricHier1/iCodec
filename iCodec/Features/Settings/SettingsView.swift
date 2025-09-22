@@ -29,7 +29,7 @@ struct SettingsView: View {
                 ForEach(CodecTheme.allCases, id: \.self) { theme in
                     HStack {
                         Text(theme.name)
-                            .font(.system(size: 12, family: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(themeManager.textColor)
 
                         Spacer()
@@ -40,7 +40,7 @@ struct SettingsView: View {
 
                         if themeManager.currentTheme == theme {
                             Text("ACTIVE")
-                                .font(.system(size: 10, family: .monospaced))
+                                .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(themeManager.successColor)
                         } else {
                             CodecButton(title: "SELECT", action: {
@@ -68,15 +68,15 @@ struct SettingsView: View {
         HUDPanel(title: "System Info") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("iCodec v1.0.0")
-                    .font(.system(size: 12, family: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(themeManager.primaryColor)
 
                 Text("Tactical Espionage Terminal")
-                    .font(.system(size: 10, family: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(themeManager.textColor.opacity(0.7))
 
                 Text("Compatible with iOS 17+")
-                    .font(.system(size: 10, family: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(themeManager.textColor.opacity(0.7))
             }
         }
@@ -85,13 +85,13 @@ struct SettingsView: View {
     private func settingRow(_ setting: String, status: String) -> some View {
         HStack {
             Text(setting)
-                .font(.system(size: 10, family: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(themeManager.textColor)
 
             Spacer()
 
             Text(status)
-                .font(.system(size: 10, family: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(themeManager.successColor)
         }
     }

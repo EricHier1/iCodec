@@ -6,7 +6,10 @@ struct ContentView: View {
     @StateObject private var themeManager = ThemeManager()
 
     var body: some View {
-        TabView(selection: $coordinator.currentTab) {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            TabView(selection: $coordinator.currentTab) {
             HUDView()
                 .tabItem {
                     Image(systemName: AppTab.hud.icon)
@@ -41,10 +44,11 @@ struct ContentView: View {
                     Text(AppTab.settings.rawValue)
                 }
                 .tag(AppTab.settings)
+            }
+            .environmentObject(coordinator)
+            .environmentObject(themeManager)
+            .accentColor(themeManager.accentColor)
+            .preferredColorScheme(.dark)
         }
-        .environmentObject(coordinator)
-        .environmentObject(themeManager)
-        .accentColor(themeManager.accentColor)
-        .preferredColorScheme(.dark)
     }
 }

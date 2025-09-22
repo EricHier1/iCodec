@@ -67,10 +67,10 @@ struct CodecButton: View {
 
     private var buttonFont: Font {
         switch size {
-        case .small: return .system(size: 12, family: .monospaced)
-        case .medium: return .system(size: 14, family: .monospaced)
-        case .large: return .system(size: 16, family: .monospaced)
-        case .fullWidth: return .system(size: 14, family: .monospaced)
+        case .small: return .system(size: 12, design: .monospaced)
+        case .medium: return .system(size: 14, design: .monospaced)
+        case .large: return .system(size: 16, design: .monospaced)
+        case .fullWidth: return .system(size: 14, design: .monospaced)
         }
     }
 

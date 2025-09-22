@@ -10,11 +10,11 @@ struct AudioView: View {
 
             VStack {
                 Text("AUDIO CODEC")
-                    .font(.system(size: 16, family: .monospaced))
+                    .font(.system(size: 16, design: .monospaced))
                     .foregroundColor(themeManager.primaryColor)
 
                 Text("Frequency calibrating...")
-                    .font(.system(size: 12, family: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(themeManager.textColor.opacity(0.7))
             }
         }

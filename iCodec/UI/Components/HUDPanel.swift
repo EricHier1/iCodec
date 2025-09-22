@@ -17,7 +17,7 @@ struct HUDPanel<Content: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(.system(size: 12, family: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(themeManager.primaryColor)
                     .textCase(.uppercase)
 
@@ -30,7 +30,7 @@ struct HUDPanel<Content: View>: View {
                         .opacity(0.8)
 
                     Text("ONLINE")
-                        .font(.system(size: 8, family: .monospaced))
+                        .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(themeManager.successColor)
                 }
             }

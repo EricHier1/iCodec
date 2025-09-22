@@ -18,6 +18,8 @@ class HUDViewModel: BaseViewModel {
         setupLocationManager()
         setupMotionManager()
         simulateRadarContacts()
+        // Start with some initial contacts
+        detectedContacts = 2
     }
 
     private func setupLocationManager() {
@@ -52,7 +54,8 @@ class HUDViewModel: BaseViewModel {
         case .authorizedWhenInUse, .authorizedAlways:
             locationManager.startUpdatingLocation()
         case .denied, .restricted:
-            handleError(LocationError.permissionDenied)
+            // Don't show error, just continue without location
+            print("Location permission denied - continuing without GPS")
         @unknown default:
             break
         }
@@ -75,7 +78,9 @@ class HUDViewModel: BaseViewModel {
 
     private func simulateRadarContacts() {
         Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            self?.detectedContacts = Int.random(in: 0...5)
+            Task { @MainActor in
+                self?.detectedContacts = Int.random(in: 0...5)
+            }
         }
     }
 }
