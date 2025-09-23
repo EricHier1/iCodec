@@ -19,29 +19,36 @@ struct CameraView: View {
                                 .allowsHitTesting(false)
                         )
                 } else {
-                    // Simulator or no camera device - show placeholder
+                    // Simulator or no camera device - show test image
                     ZStack {
-                        Color.black.ignoresSafeArea()
+                        // Test background image for filter demonstration
+                        SimulatorCameraBackground()
+                            .ignoresSafeArea()
 
-                        VStack(spacing: 20) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 48))
-                                .foregroundColor(themeManager.primaryColor.opacity(0.6))
+                        // Filter overlay
+                        filterOverlay
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
 
-                            Text("CAMERA SIMULATION")
-                                .font(.system(size: 16, design: .monospaced))
-                                .foregroundColor(themeManager.textColor)
-                                .fontWeight(.bold)
-
-                            Text("Running on simulator or no camera available")
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                        // Simulation indicator
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 4) {
+                                    Text("SIM")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(themeManager.primaryColor)
+                                        .fontWeight(.bold)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.black.opacity(0.6))
+                                        .cornerRadius(4)
+                                }
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 100)
+                            }
                         }
-                        .overlay(
-                            filterOverlay
-                                .ignoresSafeArea()
-                                .allowsHitTesting(false)
-                        )
                     }
                 }
             } else {
@@ -95,48 +102,68 @@ struct CameraView: View {
     }
 
     private var filterOverlay: some View {
-        Rectangle()
-            .fill(filterColor)
-            .blendMode(filterBlendMode)
-            .opacity(filterOpacity)
-    }
+        ZStack {
+            switch viewModel.currentFilter {
+            case .normal:
+                Color.clear
+            case .nightVision:
+                // Night vision effect
+                ZStack {
+                    Rectangle()
+                        .fill(Color.green)
+                        .blendMode(.multiply)
+                        .opacity(0.4)
 
-    private var filterColor: Color {
-        switch viewModel.currentFilter {
-        case .normal:
-            return Color.clear
-        case .nightVision:
-            return Color.green
-        case .thermal:
-            return Color.orange
-        case .infrared:
-            return Color.red
-        }
-    }
+                    Rectangle()
+                        .fill(Color.green)
+                        .blendMode(.overlay)
+                        .opacity(0.2)
 
-    private var filterBlendMode: BlendMode {
-        switch viewModel.currentFilter {
-        case .normal:
-            return .normal
-        case .nightVision:
-            return .multiply
-        case .thermal:
-            return .colorBurn
-        case .infrared:
-            return .multiply
-        }
-    }
+                    // Noise pattern
+                    Rectangle()
+                        .fill(Color.white)
+                        .opacity(0.05)
+                        .blendMode(.overlay)
+                }
+            case .thermal:
+                // Thermal imaging effect
+                ZStack {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.blue, Color.purple, Color.red, Color.orange, Color.yellow],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .blendMode(.colorBurn)
+                        .opacity(0.6)
 
-    private var filterOpacity: Double {
-        switch viewModel.currentFilter {
-        case .normal:
-            return 0.0
-        case .nightVision:
-            return 0.3
-        case .thermal:
-            return 0.4
-        case .infrared:
-            return 0.35
+                    Rectangle()
+                        .fill(Color.orange)
+                        .blendMode(.overlay)
+                        .opacity(0.3)
+                }
+            case .infrared:
+                // Infrared effect
+                ZStack {
+                    Rectangle()
+                        .fill(Color.red)
+                        .blendMode(.multiply)
+                        .opacity(0.5)
+
+                    Rectangle()
+                        .fill(Color.purple)
+                        .blendMode(.overlay)
+                        .opacity(0.2)
+
+                    // IR glow effect
+                    Rectangle()
+                        .fill(Color.white)
+                        .blendMode(.softLight)
+                        .opacity(0.1)
+                }
+            }
         }
     }
 
@@ -372,6 +399,14 @@ class CameraViewModel: BaseViewModel {
 
     @MainActor
     func capturePhoto() {
+        // Check if we have an active camera connection (real device)
+        guard captureSession.isRunning,
+              let connection = photoOutput.connection(with: .video),
+              connection.isActive else {
+            print("Photo capture: No active camera connection (simulator mode)")
+            return
+        }
+
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: PhotoCaptureDelegate())
     }
@@ -391,6 +426,104 @@ class CameraViewModel: BaseViewModel {
 
             // Apply audio feedback for filter change
             objectWillChange.send()
+        }
+    }
+}
+
+struct SimulatorCameraBackground: View {
+    var body: some View {
+        ZStack {
+            // Base gradient background
+            LinearGradient(
+                colors: [
+                    Color(red: 0.2, green: 0.3, blue: 0.4),
+                    Color(red: 0.1, green: 0.2, blue: 0.3),
+                    Color(red: 0.05, green: 0.1, blue: 0.2)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            // Test pattern elements
+            VStack(spacing: 40) {
+                // Top section - building silhouettes
+                HStack(spacing: 20) {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.7))
+                        .frame(width: 60, height: 80)
+                    Rectangle()
+                        .fill(Color.black.opacity(0.5))
+                        .frame(width: 40, height: 60)
+                    Rectangle()
+                        .fill(Color.black.opacity(0.8))
+                        .frame(width: 80, height: 100)
+                    Rectangle()
+                        .fill(Color.black.opacity(0.6))
+                        .frame(width: 50, height: 70)
+                }
+
+                // Middle section - terrain
+                HStack(spacing: 15) {
+                    Circle()
+                        .fill(Color.green.opacity(0.6))
+                        .frame(width: 30, height: 30)
+                    Circle()
+                        .fill(Color.brown.opacity(0.5))
+                        .frame(width: 40, height: 40)
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.4))
+                        .frame(width: 60, height: 20)
+                    Circle()
+                        .fill(Color.blue.opacity(0.3))
+                        .frame(width: 35, height: 35)
+                }
+
+                // Bottom section - ground pattern
+                HStack(spacing: 10) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 30, height: 15)
+                    }
+                }
+            }
+
+            // Add some "heat signatures" for thermal testing
+            VStack {
+                HStack {
+                    Spacer()
+                    Circle()
+                        .fill(Color.red.opacity(0.4))
+                        .frame(width: 25, height: 25)
+                        .padding(.trailing, 40)
+                        .padding(.top, 60)
+                }
+                Spacer()
+                HStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.5))
+                        .frame(width: 20, height: 20)
+                        .padding(.leading, 50)
+                    Spacer()
+                }
+                Spacer()
+            }
+
+            // Grid overlay for targeting
+            Path { path in
+                let spacing: CGFloat = 50
+                // Vertical lines
+                for x in stride(from: 0, through: 400, by: spacing) {
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: 800))
+                }
+                // Horizontal lines
+                for y in stride(from: 0, through: 800, by: spacing) {
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: 400, y: y))
+                }
+            }
+            .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
         }
     }
 }
