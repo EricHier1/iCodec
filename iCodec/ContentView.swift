@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var showBootScreen = true
     @State private var currentTime = Date()
     @State private var showMissionStatsDetail = false
+    @State private var navigationModules: [AppModule] = AppModule.navigationModules
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -52,6 +53,12 @@ struct ContentView: View {
         .onAppear {
             // Clear badge when app becomes active
             codecAlertManager.clearBadge()
+            // Update navigation modules in case tab order changed
+            navigationModules = AppModule.navigationModules
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            // Update tab order when settings change
+            navigationModules = AppModule.navigationModules
         }
     }
 
@@ -225,7 +232,7 @@ struct ContentView: View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(AppModule.navigationModules, id: \.self) { module in
+                    ForEach(navigationModules, id: \.self) { module in
                         NavigationItem(
                             module: module,
                             isActive: coordinator.currentModule == module
@@ -347,20 +354,21 @@ struct BootScreen: View {
             // Background
             Color.black.ignoresSafeArea()
 
-            // Grid pattern overlay
+            // Subtle grid pattern overlay (behind content)
             TacticalGrid()
                 .opacity(gridOpacity)
+                .zIndex(-1)
 
             // Scanline effect
             Rectangle()
                 .fill(LinearGradient(
-                    colors: [Color.clear, themeManager.primaryColor.opacity(0.6), Color.clear],
+                    colors: [Color.clear, themeManager.primaryColor.opacity(0.3), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 ))
-                .frame(height: 2)
+                .frame(height: 1)
                 .offset(y: scanlinePosition)
-                .blendMode(.screen)
+                .blendMode(.overlay)
 
             VStack(spacing: 40) {
                 Spacer()
@@ -402,11 +410,13 @@ struct BootScreen: View {
                             .font(.system(size: 32, design: .monospaced))
                             .fontWeight(.bold)
                             .foregroundColor(themeManager.primaryColor)
+                            .shadow(color: Color.black, radius: 4, x: 0, y: 0)
                             .opacity(logoOpacity)
 
                         Text("TACTICAL COMMUNICATION SYSTEM")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .shadow(color: Color.black, radius: 2, x: 0, y: 0)
                             .opacity(logoOpacity)
                     }
                 }
@@ -415,35 +425,65 @@ struct BootScreen: View {
 
                 // Loading section
                 VStack(spacing: 20) {
-                    // Progress indicator
-                    HStack(spacing: 8) {
-                        ForEach(0..<8, id: \.self) { index in
-                            Rectangle()
-                                .fill(index < Int(loadingProgress * 8) ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.3))
-                                .frame(width: 20, height: 4)
-                                .animation(.easeInOut(duration: 0.3).delay(Double(index) * 0.1), value: loadingProgress)
+                    // Simplified progress indicator
+                    VStack(spacing: 12) {
+                        // Clean progress bar
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(themeManager.primaryColor.opacity(0.2))
+                                    .frame(height: 4)
+
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(themeManager.primaryColor)
+                                    .frame(width: geometry.size.width * loadingProgress, height: 4)
+                            }
                         }
+                        .frame(height: 4)
+
+                        // Simple loading text
+                        Text("LOADING SYSTEM...")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.primaryColor.opacity(0.8))
                     }
 
                     // System messages
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         ForEach(Array(systemMessages.enumerated()), id: \.offset) { index, message in
                             HStack {
                                 Text("▶")
                                     .font(.system(size: 8, design: .monospaced))
                                     .foregroundColor(themeManager.accentColor)
+                                    .opacity(index == systemMessages.count - 1 ? 1.0 : 0.7)
 
                                 Text(message)
                                     .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(index == systemMessages.count - 1 ? themeManager.primaryColor : themeManager.textColor.opacity(0.6))
+                                    .foregroundColor(index == systemMessages.count - 1 ? themeManager.primaryColor : themeManager.textColor.opacity(0.7))
+                                    .fontWeight(index == systemMessages.count - 1 ? .semibold : .regular)
 
                                 Spacer()
+
+                                // Status indicator for latest message
+                                if index == systemMessages.count - 1 {
+                                    Circle()
+                                        .fill(themeManager.successColor)
+                                        .frame(width: 4, height: 4)
+                                        .scaleEffect(index == systemMessages.count - 1 ? 1.2 : 1.0)
+                                        .animation(
+                                            .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                                            value: index == systemMessages.count - 1
+                                        )
+                                }
                             }
                             .opacity(index <= currentMessageIndex ? 1.0 : 0.0)
-                            .animation(.easeIn(duration: 0.2), value: currentMessageIndex)
+                            .offset(x: index <= currentMessageIndex ? 0 : 20)
+                            .animation(
+                                .spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.1),
+                                value: currentMessageIndex
+                            )
                         }
                     }
-                    .frame(maxWidth: 280, alignment: .leading)
+                    .frame(maxWidth: 300, alignment: .leading)
                 }
 
                 Spacer()
@@ -456,35 +496,61 @@ struct BootScreen: View {
     }
 
     private func startBootSequence() {
-        // Logo animation
-        withAnimation(.easeOut(duration: 1.0)) {
+        // Subtle system initialization sound
+        TacticalSoundPlayer.playSystemInit()
+
+        // Logo animation - smoother easing
+        withAnimation(.spring(response: 1.2, dampingFraction: 0.8, blendDuration: 0)) {
             logoOpacity = 1.0
         }
 
-        // Grid animation
-        withAnimation(.easeIn(duration: 0.8).delay(0.3)) {
-            gridOpacity = 0.2
+        // Grid animation - more subtle
+        withAnimation(.easeInOut(duration: 1.2).delay(0.4)) {
+            gridOpacity = 0.1
         }
 
-        // Scanline animation
+        // Scanline animation - continuous smooth movement
         withAnimation(.linear(duration: 3.0).repeatForever(autoreverses: false)) {
             scanlinePosition = UIScreen.main.bounds.height
         }
 
-        // Progress animation
-        withAnimation(.easeInOut(duration: 2.0).delay(0.5)) {
+        // Progress animation - stepped for more realistic loading
+        animateProgressSteps()
+
+        // Message sequence with improved timing and sounds
+        animateBootMessages()
+    }
+
+    private func animateProgressSteps() {
+        // Simplified progress animation - smooth progression
+        withAnimation(.easeInOut(duration: 2.0).delay(0.6)) {
             loadingProgress = 1.0
         }
 
-        // Message sequence
-        for (index, message) in bootMessages.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8 + Double(index) * 0.3) {
-                systemMessages.append(message)
-                currentMessageIndex = index
+        // Single completion sound
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            TacticalSoundPlayer.playAction()
+        }
+    }
 
-                // Play tactical sound for each message
-                if index % 2 == 0 {
-                    TacticalSoundPlayer.playNavigation()
+    private func animateBootMessages() {
+        for (index, message) in bootMessages.enumerated() {
+            let delay = 1.0 + Double(index) * 0.35
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    systemMessages.append(message)
+                    currentMessageIndex = index
+                }
+
+                // Minimal sound design - only key moments
+                switch index {
+                case 0: // System start
+                    TacticalSoundPlayer.playAction()
+                case 7: // Ready for operation
+                    TacticalSoundPlayer.playAction()
+                default:
+                    // No sound for other messages
+                    break
                 }
             }
         }

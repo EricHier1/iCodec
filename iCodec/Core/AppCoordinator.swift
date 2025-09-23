@@ -40,8 +40,25 @@ enum AppModule: String, CaseIterable {
     case camera = "CAMERA"
     case settings = "SETTINGS"
 
-    static var navigationModules: [AppModule] {
+    static var defaultNavigationModules: [AppModule] {
         [.mission, .map, .audio, .intel, .alerts, .camera, .compass]
+    }
+
+    static var navigationModules: [AppModule] {
+        if let customOrder = UserDefaults.standard.array(forKey: "customTabOrder") as? [String] {
+            let customModules = customOrder.compactMap { AppModule(rawValue: $0) }
+            // Ensure all modules are present, add any missing ones
+            let allModules = Set(defaultNavigationModules)
+            let customSet = Set(customModules)
+            let missing = allModules.subtracting(customSet)
+            return customModules + Array(missing)
+        }
+        return defaultNavigationModules
+    }
+
+    static func saveCustomTabOrder(_ modules: [AppModule]) {
+        let moduleStrings = modules.map { $0.rawValue }
+        UserDefaults.standard.set(moduleStrings, forKey: "customTabOrder")
     }
 
     var glyph: String {

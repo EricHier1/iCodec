@@ -35,6 +35,11 @@ enum TacticalSoundPlayer {
     static func playAlert() {
         AudioServicesPlaySystemSound(1005) // New mail sound
     }
+
+    static func playSystemInit() {
+        // Subtle initialization sound - softer than action sound
+        AudioServicesPlaySystemSound(1103) // Begin recording sound - subtle and professional
+    }
 }
 
 @MainActor

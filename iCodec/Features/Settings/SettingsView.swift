@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var customSecondaryHex = ""
     @State private var customAccentHex = ""
     @State private var customThemeError: String?
+    @State private var tabOrder: [AppModule] = AppModule.navigationModules
 
     var body: some View {
         ZStack {
@@ -15,6 +16,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     themeSettingsSection
+                    tabOrderSection
                     systemSettingsSection
                     aboutSection
                 }
@@ -25,7 +27,10 @@ struct SettingsView: View {
             ScanlineOverlay()
                 .opacity(0.1)
         )
-        .onAppear(perform: syncCustomInputs)
+        .onAppear {
+            syncCustomInputs()
+            tabOrder = AppModule.navigationModules
+        }
         .onChange(of: themeManager.customPalette) {
             syncCustomInputs()
         }
@@ -86,6 +91,79 @@ struct SettingsView: View {
                                 .background(themeManager.primaryColor.opacity(0.3))
                         }
                     }
+                }
+            }
+        }
+    }
+
+    private var tabOrderSection: some View {
+        HUDPanel(title: "Tab Order Configuration") {
+            VStack(spacing: 16) {
+                Text("DRAG TO REORDER NAVIGATION TABS")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                    .fontWeight(.bold)
+
+                VStack(spacing: 8) {
+                    ForEach(Array(tabOrder.enumerated()), id: \.element) { index, module in
+                        HStack(spacing: 12) {
+                            // Drag handle
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 12))
+                                .foregroundColor(themeManager.primaryColor.opacity(0.6))
+
+                            // Module info
+                            HStack(spacing: 8) {
+                                Text(module.glyph)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(themeManager.backgroundColor)
+                                    .frame(width: 24, height: 16)
+                                    .background(themeManager.primaryColor)
+                                    .cornerRadius(3)
+
+                                Text(module.rawValue)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor)
+                                    .fontWeight(.medium)
+
+                                Spacer()
+
+                                Text("#\(index + 1)")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(themeManager.primaryColor.opacity(0.7))
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(themeManager.surfaceColor.opacity(0.2))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1)
+                        )
+                        .cornerRadius(6)
+                        .onDrag {
+                            NSItemProvider(object: "\(index)" as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: TabDropDelegate(
+                            destinationIndex: index,
+                            tabOrder: $tabOrder,
+                            onReorder: saveTabOrder
+                        ))
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    CodecButton(title: "RESET TO DEFAULT", action: {
+                        withAnimation(.spring()) {
+                            tabOrder = AppModule.defaultNavigationModules
+                            saveTabOrder()
+                        }
+                    }, style: .secondary, size: .small)
+
+                    CodecButton(title: "SAVE ORDER", action: {
+                        saveTabOrder()
+                    }, style: .primary, size: .small)
                 }
             }
         }
@@ -226,5 +304,44 @@ struct SettingsView: View {
         }
 
         return cleaned
+    }
+
+    private func saveTabOrder() {
+        AppModule.saveCustomTabOrder(tabOrder)
+        TacticalSoundPlayer.playAction()
+    }
+}
+
+struct TabDropDelegate: DropDelegate {
+    let destinationIndex: Int
+    @Binding var tabOrder: [AppModule]
+    let onReorder: () -> Void
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let item = info.itemProviders(for: [.text]).first else { return false }
+
+        item.loadItem(forTypeIdentifier: "public.text", options: nil) { (data, error) in
+            if let data = data as? Data,
+               let sourceIndexString = String(data: data, encoding: .utf8),
+               let sourceIndex = Int(sourceIndexString) {
+
+                DispatchQueue.main.async {
+                    if sourceIndex != destinationIndex {
+                        let sourceModule = tabOrder[sourceIndex]
+                        tabOrder.remove(at: sourceIndex)
+
+                        let actualDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+                        tabOrder.insert(sourceModule, at: actualDestination)
+
+                        onReorder()
+                    }
+                }
+            }
+        }
+        return true
     }
 }
