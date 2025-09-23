@@ -469,7 +469,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"iCodec/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = iCodec/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "iCodec requires camera access for tactical HUD overlay and surveillance features.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "iCodec uses location services for mission tracking and tactical positioning.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iCodec uses location services for mission tracking and tactical positioning.";
@@ -501,7 +502,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"iCodec/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = iCodec/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "iCodec requires camera access for tactical HUD overlay and surveillance features.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "iCodec uses location services for mission tracking and tactical positioning.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iCodec uses location services for mission tracking and tactical positioning.";
