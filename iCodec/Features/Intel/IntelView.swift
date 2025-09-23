@@ -3,6 +3,7 @@ import SwiftUI
 struct IntelView: View {
     @ObservedObject private var viewModel = SharedDataManager.shared.intelViewModel
     @EnvironmentObject private var themeManager: ThemeManager
+    @State private var selectedIntel: IntelEntry?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -25,6 +26,9 @@ struct IntelView: View {
                 VStack(spacing: 12) {
                     ForEach(viewModel.intelEntries) { entry in
                         IntelCard(entry: entry)
+                            .onTapGesture {
+                                selectedIntel = entry
+                            }
                             .contextMenu {
                                 Button("Edit Intel", systemImage: "pencil") {
                                     viewModel.editIntel(entry)
@@ -58,6 +62,9 @@ struct IntelView: View {
         }
         .sheet(isPresented: $viewModel.showEditIntelDialog) {
             EditIntelSheet(viewModel: viewModel)
+        }
+        .fullScreenCover(item: $selectedIntel) { intel in
+            IntelDetailView(intel: intel)
         }
     }
 }
@@ -352,5 +359,121 @@ enum Classification: String, CaseIterable {
         case .secret: return .orange
         case .topSecret: return .red
         }
+    }
+}
+
+struct IntelDetailView: View {
+    let intel: IntelEntry
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                CodecButton(title: "BACK", action: {
+                    dismiss()
+                }, style: .secondary, size: .medium)
+
+                Spacer()
+
+                Text("INTEL REPORT")
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .fontWeight(.bold)
+
+                Spacer()
+
+                classificationBadge
+            }
+            .padding(16)
+            .background(themeManager.surfaceColor.opacity(0.1))
+            .overlay(
+                Rectangle()
+                    .fill(themeManager.primaryColor.opacity(0.3))
+                    .frame(height: 1),
+                alignment: .bottom
+            )
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Title and metadata
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(intel.title)
+                            .font(.system(size: 24, design: .monospaced))
+                            .foregroundColor(themeManager.primaryColor)
+                            .fontWeight(.bold)
+                            .multilineTextAlignment(.leading)
+
+                        HStack {
+                            Text("TIMESTAMP:")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            Text(intel.timestamp, style: .date)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+
+                            Spacer()
+
+                            Text("TIME:")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            Text(intel.timestamp, style: .time)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                        }
+                    }
+
+                    // Divider
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1)
+
+                    // Content
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("INTELLIGENCE BRIEFING")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.accentColor)
+                            .fontWeight(.bold)
+
+                        Text(intel.content)
+                            .font(.system(size: 14, design: .monospaced))
+                            .foregroundColor(themeManager.textColor)
+                            .lineSpacing(4)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer(minLength: 100)
+                }
+                .padding(20)
+            }
+        }
+        .background(themeManager.backgroundColor)
+        .navigationBarHidden(true)
+    }
+
+    private var classificationBadge: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(intel.classification.color)
+                .frame(width: 6, height: 6)
+
+            Text(intel.classification.rawValue.uppercased())
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(intel.classification.color)
+                .fontWeight(.bold)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(intel.classification.color.opacity(0.1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(intel.classification.color, lineWidth: 1)
+        )
+        .cornerRadius(4)
     }
 }
