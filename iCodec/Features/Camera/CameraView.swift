@@ -61,7 +61,7 @@ struct CameraView: View {
             } else {
                 // Camera not available (simulator or no camera)
                 VStack(spacing: 20) {
-                    Image(systemName: "camera.slash")
+                    Image(systemName: "camera")
                         .font(.system(size: 48))
                         .foregroundColor(themeManager.primaryColor.opacity(0.6))
 
@@ -197,7 +197,7 @@ struct CameraView: View {
                         .fill(viewModel.cameraAvailable ? themeManager.primaryColor.opacity(0.2) : themeManager.primaryColor.opacity(0.1))
                         .frame(width: 60, height: 60)
 
-                    Image(systemName: viewModel.cameraAvailable ? "camera.fill" : "camera.slash")
+                    Image(systemName: viewModel.cameraAvailable ? "camera.fill" : "camera")
                         .font(.system(size: 24))
                         .foregroundColor(viewModel.cameraAvailable ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.5))
                 }
@@ -247,7 +247,14 @@ struct CameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
+        guard let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer else {
+            return
+        }
+
+        // Update frame safely on main thread
+        if Thread.isMainThread {
+            previewLayer.frame = uiView.bounds
+        } else {
             DispatchQueue.main.async {
                 previewLayer.frame = uiView.bounds
             }
@@ -293,13 +300,16 @@ class CameraViewModel: BaseViewModel {
                     setupCamera()
                 } else {
                     isAuthorized = false
+                    cameraAvailable = false
                 }
             case .denied, .restricted:
                 print("Camera access denied or restricted")
                 isAuthorized = false
+                cameraAvailable = false
             @unknown default:
                 print("Unknown camera authorization status")
                 isAuthorized = false
+                cameraAvailable = false
             }
         }
     }
@@ -334,63 +344,90 @@ class CameraViewModel: BaseViewModel {
                     let session = captureSession
                     let output = photoOutput
 
-                    // Configure session
+                    // Configure session with error handling
                     session.beginConfiguration()
 
-                    // Remove any existing inputs/outputs
-                    session.inputs.forEach { session.removeInput($0) }
-                    session.outputs.forEach { session.removeOutput($0) }
+                    // Remove any existing inputs/outputs safely
+                    for existingInput in session.inputs {
+                        session.removeInput(existingInput)
+                    }
+                    for existingOutput in session.outputs {
+                        session.removeOutput(existingOutput)
+                    }
 
-                    // Add input
-                    if session.canAddInput(input) {
-                        session.addInput(input)
-                    } else {
-                        print("Cannot add camera input")
+                    // Add input with validation
+                    guard session.canAddInput(input) else {
+                        print("❌ Cannot add camera input")
                         session.commitConfiguration()
                         isAuthorized = true
                         cameraAvailable = false
                         return
                     }
+                    session.addInput(input)
 
-                    // Add photo output
-                    if session.canAddOutput(output) {
-                        session.addOutput(output)
+                    // Add photo output with validation
+                    guard session.canAddOutput(output) else {
+                        print("❌ Cannot add photo output")
+                        session.commitConfiguration()
+                        isAuthorized = true
+                        cameraAvailable = false
+                        return
+                    }
+                    session.addOutput(output)
 
-                        // Configure photo output settings
+                    // Configure photo output settings safely
+                    do {
                         if #available(iOS 16.0, *) {
                             // Use new maxPhotoDimensions API for iOS 16+
-                            output.maxPhotoDimensions = CMVideoDimensions(width: 4032, height: 3024)
+                            let maxDimensions = CMVideoDimensions(width: 4032, height: 3024)
+                            output.maxPhotoDimensions = maxDimensions
+                            print("✅ Set max photo dimensions: \(maxDimensions)")
                         } else {
                             // Use deprecated API for iOS 15 and below
                             if output.isHighResolutionCaptureEnabled {
                                 output.isHighResolutionCaptureEnabled = true
+                                print("✅ Enabled high resolution capture")
                             }
                         }
-                    } else {
-                        print("Cannot add photo output")
-                        session.commitConfiguration()
-                        isAuthorized = true
-                        cameraAvailable = false
-                        return
+                    } catch {
+                        print("⚠️ Could not configure photo output settings: \(error)")
                     }
 
-                    // Set session preset for best quality
+                    // Set session preset with fallbacks
                     if session.canSetSessionPreset(.photo) {
                         session.sessionPreset = .photo
+                        print("✅ Set session preset: photo")
                     } else if session.canSetSessionPreset(.high) {
                         session.sessionPreset = .high
+                        print("✅ Set session preset: high")
+                    } else {
+                        session.sessionPreset = .medium
+                        print("⚠️ Using medium quality preset")
                     }
 
                     session.commitConfiguration()
                     isAuthorized = true
                     cameraAvailable = true
 
-                    print("Camera setup successful")
+                    print("✅ Camera setup successful")
 
-                    // Start session on background queue
+                    // Start session on background queue with error handling
                     DispatchQueue.global(qos: .userInitiated).async {
+                        guard !session.isRunning else {
+                            print("⚠️ Session already running")
+                            return
+                        }
+
                         session.startRunning()
-                        print("Camera session started")
+
+                        if session.isRunning {
+                            print("✅ Camera session started successfully")
+                        } else {
+                            print("❌ Failed to start camera session")
+                            Task { @MainActor in
+                                self.cameraAvailable = false
+                            }
+                        }
                     }
                 }
             } catch {
@@ -464,11 +501,13 @@ class CameraViewModel: BaseViewModel {
             let nextIndex = (currentIndex + 1) % filters.count
             currentFilter = filters[nextIndex]
 
-            // Apply camera settings for night vision
-            if currentFilter == .nightVision {
-                enableNightVisionMode()
-            } else {
-                disableNightVisionMode()
+            // Apply camera settings for night vision only if camera is available
+            if cameraAvailable && isAuthorized {
+                if currentFilter == .nightVision {
+                    enableNightVisionMode()
+                } else {
+                    disableNightVisionMode()
+                }
             }
 
             // Apply audio feedback for filter change
@@ -477,50 +516,81 @@ class CameraViewModel: BaseViewModel {
     }
 
     private func enableNightVisionMode() {
-        guard cameraAvailable, let device = currentDevice else { return }
+        guard cameraAvailable, let device = currentDevice else {
+            print("🌙 Cannot enable night vision - camera not available")
+            return
+        }
 
-        do {
-            try device.lockForConfiguration()
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try device.lockForConfiguration()
 
-            // Set exposure bias to brighten image
-            let maxBias = device.maxExposureTargetBias
-            let targetBias = min(maxBias, 2.0) // Increase exposure
-            device.setExposureTargetBias(targetBias) { time in
-                print("🌙 Night vision exposure adjusted")
+                // Check if device supports exposure bias
+                if device.isExposureModeSupported(.custom) && device.maxExposureTargetBias > 0 {
+                    let maxBias = device.maxExposureTargetBias
+                    let targetBias = min(maxBias, 1.5) // Conservative exposure increase
+                    device.setExposureTargetBias(targetBias) { time in
+                        print("🌙 Night vision exposure adjusted to \(targetBias)")
+                    }
+
+                    Task { @MainActor in
+                        self.exposureBias = targetBias
+                    }
+                }
+
+                // Check if device supports manual ISO
+                if device.isExposureModeSupported(.custom) {
+                    let maxISO = device.activeFormat.maxISO
+                    let minISO = device.activeFormat.minISO
+                    let targetISO = min(maxISO, max(minISO, 800)) // Conservative ISO
+
+                    let currentDuration = device.exposureDuration
+                    device.setExposureModeCustom(duration: currentDuration, iso: targetISO) { time in
+                        print("🌙 Night vision ISO set to: \(targetISO)")
+                    }
+
+                    Task { @MainActor in
+                        self.isoValue = targetISO
+                    }
+                }
+
+                device.unlockForConfiguration()
+                print("🌙 Night vision mode enabled successfully")
+            } catch {
+                print("❌ Failed to enable night vision: \(error)")
+                // Reset to auto mode if manual settings fail
+                Task { @MainActor in
+                    self.disableNightVisionMode()
+                }
             }
-
-            // Set higher ISO for low light
-            let maxISO = device.activeFormat.maxISO
-            let targetISO = min(maxISO, 1600) // High ISO for low light
-            device.setExposureModeCustom(duration: device.exposureDuration, iso: targetISO) { time in
-                print("🌙 Night vision ISO set to: \(targetISO)")
-            }
-
-            exposureBias = targetBias
-            isoValue = targetISO
-
-            device.unlockForConfiguration()
-            print("🌙 Night vision mode enabled")
-        } catch {
-            print("Failed to enable night vision: \(error)")
         }
     }
 
     private func disableNightVisionMode() {
-        guard cameraAvailable, let device = currentDevice else { return }
+        guard cameraAvailable, let device = currentDevice else {
+            print("🌙 Cannot disable night vision - camera not available")
+            return
+        }
 
-        do {
-            try device.lockForConfiguration()
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try device.lockForConfiguration()
 
-            // Reset exposure to auto
-            device.exposureMode = .autoExpose
-            exposureBias = 0.0
-            isoValue = 0.0
+                // Reset exposure to auto mode safely
+                if device.isExposureModeSupported(.autoExpose) {
+                    device.exposureMode = .autoExpose
+                }
 
-            device.unlockForConfiguration()
-            print("🌙 Night vision mode disabled")
-        } catch {
-            print("Failed to disable night vision: \(error)")
+                Task { @MainActor in
+                    self.exposureBias = 0.0
+                    self.isoValue = 0.0
+                }
+
+                device.unlockForConfiguration()
+                print("🌙 Night vision mode disabled successfully")
+            } catch {
+                print("❌ Failed to disable night vision: \(error)")
+            }
         }
     }
 
@@ -636,8 +706,7 @@ private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 
 struct NightVisionOverlay: View {
     let themeManager: ThemeManager
-    @State private var noiseOffset: CGFloat = 0
-    @State private var scanlineOffset: CGFloat = 0
+    @State private var shimmer: Bool = false
 
     var body: some View {
         ZStack {
@@ -653,25 +722,10 @@ struct NightVisionOverlay: View {
                 .blendMode(.overlay)
                 .opacity(0.1)
 
-            // Noise pattern for realistic night vision grain
-            NoisePattern(offset: noiseOffset)
+            // Simple static noise pattern (no animation to prevent crashes)
+            StaticNoisePattern()
                 .blendMode(.overlay)
-                .opacity(0.15)
-                .onAppear {
-                    withAnimation(.linear(duration: 0.1).repeatForever(autoreverses: false)) {
-                        noiseOffset = 100
-                    }
-                }
-
-            // Scanning lines effect
-            ScanLinesOverlay(offset: scanlineOffset)
-                .blendMode(.overlay)
-                .opacity(0.2)
-                .onAppear {
-                    withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
-                        scanlineOffset = 1000
-                    }
-                }
+                .opacity(0.1)
 
             // Vignette effect for authentic night vision look
             RadialGradient(
@@ -681,6 +735,22 @@ struct NightVisionOverlay: View {
                 endRadius: 300
             )
             .blendMode(.multiply)
+
+            // Simple scanning effect
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.clear, Color.green.opacity(0.1), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .opacity(shimmer ? 0.3 : 0.1)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                        shimmer.toggle()
+                    }
+                }
 
             // Corner display indicators
             VStack {
@@ -724,45 +794,21 @@ struct NightVisionOverlay: View {
     }
 }
 
-struct NoisePattern: View {
-    let offset: CGFloat
-
+struct StaticNoisePattern: View {
     var body: some View {
-        Canvas { context, size in
-            // Create noise pattern
-            for _ in 0..<200 {
-                let x = CGFloat.random(in: 0...size.width)
-                let y = CGFloat.random(in: 0...size.height) + offset
-                let adjustedY = y.truncatingRemainder(dividingBy: size.height)
-
-                context.fill(
-                    Path(ellipseIn: CGRect(x: x, y: adjustedY, width: 1, height: 1)),
-                    with: .color(.white)
+        Rectangle()
+            .fill(
+                RadialGradient(
+                    colors: [
+                        Color.white.opacity(0.1),
+                        Color.clear,
+                        Color.white.opacity(0.05),
+                        Color.clear
+                    ],
+                    center: .center,
+                    startRadius: 10,
+                    endRadius: 50
                 )
-            }
-        }
-    }
-}
-
-struct ScanLinesOverlay: View {
-    let offset: CGFloat
-
-    var body: some View {
-        Canvas { context, size in
-            let lineSpacing: CGFloat = 4
-            let lineHeight: CGFloat = 1
-
-            for i in stride(from: 0, through: size.height + lineSpacing, by: lineSpacing) {
-                let y = i + offset.truncatingRemainder(dividingBy: lineSpacing)
-                let adjustedY = y.truncatingRemainder(dividingBy: size.height + lineSpacing)
-
-                if adjustedY >= 0 && adjustedY <= size.height {
-                    context.fill(
-                        Path(CGRect(x: 0, y: adjustedY, width: size.width, height: lineHeight)),
-                        with: .color(.green.opacity(0.1))
-                    )
-                }
-            }
-        }
+            )
     }
 }
