@@ -17,8 +17,8 @@ struct ContentView: View {
             if showBootScreen {
                 BootScreen()
                     .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                            withAnimation(.easeInOut(duration: 0.5)) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                            withAnimation(.easeInOut(duration: 0.8)) {
                                 showBootScreen = false
                             }
                         }
@@ -302,57 +302,216 @@ struct NavigationItem: View {
 
 struct BootScreen: View {
     @State private var loadingProgress: CGFloat = 0
+    @State private var scanlinePosition: CGFloat = 0
+    @State private var systemMessages: [String] = []
+    @State private var currentMessageIndex = 0
+    @State private var logoOpacity: Double = 0
+    @State private var gridOpacity: Double = 0
     @EnvironmentObject private var themeManager: ThemeManager
+
+    private let bootMessages = [
+        "SYSTEM INITIALIZATION...",
+        "LOADING TACTICAL OS v2.1.4",
+        "CODEC INTERFACE ONLINE",
+        "MISSION CONTROL READY",
+        "STEALTH MODULE ACTIVE",
+        "SURVEILLANCE NET CONNECTED",
+        "AUTHORIZATION VERIFIED",
+        "READY FOR OPERATION"
+    ]
 
     var body: some View {
         ZStack {
+            // Background
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 32) {
-                // Logo
-                VStack(spacing: 16) {
-                    // Diamond logo placeholder
+            // Grid pattern overlay
+            TacticalGrid()
+                .opacity(gridOpacity)
+
+            // Scanline effect
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [Color.clear, themeManager.primaryColor.opacity(0.6), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .frame(height: 2)
+                .offset(y: scanlinePosition)
+                .blendMode(.screen)
+
+            VStack(spacing: 40) {
+                Spacer()
+
+                // Logo section
+                VStack(spacing: 20) {
+                    // Tactical diamond logo
                     ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.primaryColor, lineWidth: 2)
-                            .frame(width: 60, height: 60)
+                        // Outer ring
+                        Circle()
+                            .stroke(themeManager.primaryColor, lineWidth: 1)
+                            .frame(width: 100, height: 100)
 
-                        Text("◆")
-                            .font(.system(size: 32))
-                            .foregroundColor(themeManager.primaryColor)
+                        // Inner diamond
+                        ZStack {
+                            Rectangle()
+                                .fill(themeManager.primaryColor)
+                                .frame(width: 40, height: 40)
+                                .rotationEffect(.degrees(45))
+
+                            // Center dot
+                            Circle()
+                                .fill(Color.black)
+                                .frame(width: 8, height: 8)
+                        }
+
+                        // Corner brackets
+                        ForEach(0..<4, id: \.self) { corner in
+                            TacticalBracket()
+                                .rotationEffect(.degrees(Double(corner * 90)))
+                        }
                     }
+                    .opacity(logoOpacity)
+                    .scaleEffect(logoOpacity)
 
-                    Text("iCODEC")
-                        .font(.system(size: 28, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(themeManager.primaryColor)
-                        .shadow(color: themeManager.primaryColor.opacity(0.5), radius: 10)
+                    // Title
+                    VStack(spacing: 8) {
+                        Text("iCODEC")
+                            .font(.system(size: 32, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundColor(themeManager.primaryColor)
+                            .opacity(logoOpacity)
+
+                        Text("TACTICAL COMMUNICATION SYSTEM")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .opacity(logoOpacity)
+                    }
                 }
+
+                Spacer()
 
                 // Loading section
-                VStack(spacing: 16) {
-                    // Loading bar
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(themeManager.primaryColor, lineWidth: 1)
-                            .frame(height: 8)
-
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(themeManager.primaryColor)
-                            .frame(width: 200 * loadingProgress, height: 8)
+                VStack(spacing: 20) {
+                    // Progress indicator
+                    HStack(spacing: 8) {
+                        ForEach(0..<8, id: \.self) { index in
+                            Rectangle()
+                                .fill(index < Int(loadingProgress * 8) ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.3))
+                                .frame(width: 20, height: 4)
+                                .animation(.easeInOut(duration: 0.3).delay(Double(index) * 0.1), value: loadingProgress)
+                        }
                     }
-                    .frame(width: 200)
 
-                    Text("Initializing tactical interface...")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(themeManager.textColor.opacity(0.8))
+                    // System messages
+                    VStack(spacing: 4) {
+                        ForEach(Array(systemMessages.enumerated()), id: \.offset) { index, message in
+                            HStack {
+                                Text("▶")
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundColor(themeManager.accentColor)
+
+                                Text(message)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(index == systemMessages.count - 1 ? themeManager.primaryColor : themeManager.textColor.opacity(0.6))
+
+                                Spacer()
+                            }
+                            .opacity(index <= currentMessageIndex ? 1.0 : 0.0)
+                            .animation(.easeIn(duration: 0.2), value: currentMessageIndex)
+                        }
+                    }
+                    .frame(maxWidth: 280, alignment: .leading)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 40)
+        }
+        .onAppear {
+            startBootSequence()
+        }
+    }
+
+    private func startBootSequence() {
+        // Logo animation
+        withAnimation(.easeOut(duration: 1.0)) {
+            logoOpacity = 1.0
+        }
+
+        // Grid animation
+        withAnimation(.easeIn(duration: 0.8).delay(0.3)) {
+            gridOpacity = 0.2
+        }
+
+        // Scanline animation
+        withAnimation(.linear(duration: 3.0).repeatForever(autoreverses: false)) {
+            scanlinePosition = UIScreen.main.bounds.height
+        }
+
+        // Progress animation
+        withAnimation(.easeInOut(duration: 2.0).delay(0.5)) {
+            loadingProgress = 1.0
+        }
+
+        // Message sequence
+        for (index, message) in bootMessages.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8 + Double(index) * 0.3) {
+                systemMessages.append(message)
+                currentMessageIndex = index
+
+                // Play tactical sound for each message
+                if index % 2 == 0 {
+                    TacticalSoundPlayer.playNavigation()
                 }
             }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.5)) {
-                    loadingProgress = 1.0
-                }
+        }
+    }
+}
+
+struct TacticalGrid: View {
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    var body: some View {
+        Canvas { context, size in
+            let spacing: CGFloat = 30
+
+            context.stroke(
+                Path { path in
+                    // Vertical lines
+                    for x in stride(from: 0, through: size.width, by: spacing) {
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: size.height))
+                    }
+
+                    // Horizontal lines
+                    for y in stride(from: 0, through: size.height, by: spacing) {
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: size.width, y: y))
+                    }
+                },
+                with: .color(themeManager.primaryColor),
+                lineWidth: 0.5
+            )
+        }
+    }
+}
+
+struct TacticalBracket: View {
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    var body: some View {
+        VStack {
+            HStack {
+                Rectangle()
+                    .fill(themeManager.primaryColor)
+                    .frame(width: 12, height: 2)
+                Rectangle()
+                    .fill(themeManager.primaryColor)
+                    .frame(width: 2, height: 12)
             }
+            .offset(x: 50, y: -50)
+            Spacer()
         }
     }
 }
