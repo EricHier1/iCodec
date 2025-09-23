@@ -288,10 +288,25 @@ struct CameraView: View {
             }
 
             // Toggle recording
-            CodecButton(title: viewModel.isRecording ? "STOP" : "REC", action: {
+            Button(action: {
                 TacticalSoundPlayer.playAction()
                 viewModel.toggleRecording()
-            }, style: viewModel.isRecording ? .secondary : .primary, size: .medium)
+            }) {
+                Text(viewModel.isRecording ? "STOP" : "REC")
+                    .font(.system(size: 14, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .foregroundColor(viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor)
+                    .frame(width: 60, height: 40) // Fixed width to prevent resizing
+                    .background((viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor).opacity(0.2))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor, lineWidth: 1)
+                    )
+                    .overlay(
+                        ScanlineOverlay()
+                            .opacity(0.3)
+                    )
+            }
         }
         .padding(.bottom, 30)
     }

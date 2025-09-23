@@ -30,10 +30,8 @@ class AudioViewModel: NSObject, ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     private let radioStations: [RadioStation] = [
-        RadioStation(id: UUID(), name: "RETRO FM", url: "https://ice1.somafm.com/groovesalad-256-mp3", frequency: "80.5"),
-        RadioStation(id: UUID(), name: "80S HITS", url: "https://ice1.somafm.com/u80s-256-mp3", frequency: "81.2"),
-        RadioStation(id: UUID(), name: "NEON RADIO", url: "https://ice1.somafm.com/lush-256-mp3", frequency: "82.7"),
-        RadioStation(id: UUID(), name: "FLASHBACK", url: "https://ice1.somafm.com/secretagent-256-mp3", frequency: "83.1")
+        RadioStation(id: UUID(), name: "80S HITS", url: "https://streams.80s80s.de/web/mp3-192/streams.80s80s.de/", frequency: "80.5"),
+        RadioStation(id: UUID(), name: "FLASHBACK", url: "https://streams.fluxfm.de/80er/mp3-320/audio/", frequency: "81.2")
     ]
 
     private var currentStationIndex = 0

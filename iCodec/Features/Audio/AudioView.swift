@@ -92,10 +92,25 @@ struct AudioView: View {
                             viewModel.previousStation()
                         }, style: .secondary, size: .small)
 
-                        CodecButton(title: viewModel.isPlaying ? "STOP" : "PLAY", action: {
+                        Button(action: {
                             TacticalSoundPlayer.playAction()
                             viewModel.toggleRadio()
-                        }, style: .primary, size: .medium)
+                        }) {
+                            Text(viewModel.isPlaying ? "STOP" : "PLAY")
+                                .font(.system(size: 14, design: .monospaced))
+                                .fontWeight(.semibold)
+                                .foregroundColor(themeManager.primaryColor)
+                                .frame(width: 60, height: 40) // Fixed width to prevent resizing
+                                .background(themeManager.primaryColor.opacity(0.2))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(themeManager.primaryColor, lineWidth: 1)
+                                )
+                                .overlay(
+                                    ScanlineOverlay()
+                                        .opacity(0.3)
+                                )
+                        }
 
                         CodecButton(title: "NEXT", action: {
                             TacticalSoundPlayer.playNavigation()
@@ -181,10 +196,25 @@ struct AudioView: View {
 
                     // Controls
                     HStack(spacing: 16) {
-                        CodecButton(title: viewModel.isRecording ? "STOP" : "REC", action: {
+                        Button(action: {
                             TacticalSoundPlayer.playAction()
                             viewModel.toggleRecording()
-                        }, style: viewModel.isRecording ? .secondary : .primary, size: .medium)
+                        }) {
+                            Text(viewModel.isRecording ? "STOP" : "REC")
+                                .font(.system(size: 14, design: .monospaced))
+                                .fontWeight(.semibold)
+                                .foregroundColor(viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor)
+                                .frame(width: 60, height: 40) // Fixed width to prevent resizing
+                                .background((viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor).opacity(0.2))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor, lineWidth: 1)
+                                )
+                                .overlay(
+                                    ScanlineOverlay()
+                                        .opacity(0.3)
+                                )
+                        }
 
                         if viewModel.hasRecordings {
                             CodecButton(title: "PLAY LAST", action: {
