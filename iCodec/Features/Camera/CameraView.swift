@@ -13,6 +13,22 @@ struct CameraView: View {
                     // Real camera preview
                     CameraPreview(session: viewModel.captureSession)
                         .ignoresSafeArea()
+                        .scaleEffect(viewModel.zoomLevel)
+                        .gesture(
+                            SimultaneousGesture(
+                                MagnificationGesture()
+                                    .onChanged { value in
+                                        viewModel.updateZoom(value)
+                                    }
+                                    .onEnded { value in
+                                        viewModel.finalizeZoom(value)
+                                    },
+                                TapGesture(count: 2)
+                                    .onEnded {
+                                        viewModel.resetZoom()
+                                    }
+                            )
+                        )
                         .overlay(
                             filterOverlay
                                 .ignoresSafeArea()
@@ -24,6 +40,22 @@ struct CameraView: View {
                         // Test background image for filter demonstration
                         SimulatorCameraBackground()
                             .ignoresSafeArea()
+                            .scaleEffect(viewModel.zoomLevel)
+                            .gesture(
+                                SimultaneousGesture(
+                                    MagnificationGesture()
+                                        .onChanged { value in
+                                            viewModel.updateZoom(value)
+                                        }
+                                        .onEnded { value in
+                                            viewModel.finalizeZoom(value)
+                                        },
+                                    TapGesture(count: 2)
+                                        .onEnded {
+                                            viewModel.resetZoom()
+                                        }
+                                )
+                            )
 
                         // Filter overlay
                         filterOverlay
@@ -184,7 +216,8 @@ struct CameraView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text("ZOOM: \(String(format: "%.1fx", viewModel.zoomLevel))")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(themeManager.textColor)
+                    .foregroundColor(viewModel.zoomLevel > 1.0 ? themeManager.accentColor : themeManager.textColor)
+                    .fontWeight(viewModel.zoomLevel > 1.0 ? .bold : .regular)
 
                 Text("ISO: AUTO")
                     .font(.system(size: 10, design: .monospaced))
@@ -295,6 +328,8 @@ class CameraViewModel: BaseViewModel {
     @Published @MainActor var isRecording = false
     @Published @MainActor var zoomLevel: CGFloat = 1.0
     @Published @MainActor var currentFilter: CameraFilter = .normal
+
+    private var baseZoomLevel: CGFloat = 1.0
 
     let captureSession = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
@@ -427,6 +462,57 @@ class CameraViewModel: BaseViewModel {
             // Apply audio feedback for filter change
             objectWillChange.send()
         }
+    }
+
+    @MainActor
+    func updateZoom(_ gestureValue: CGFloat) {
+        // Calculate new zoom level based on base + gesture multiplier
+        let newZoom = max(1.0, min(8.0, baseZoomLevel * gestureValue))
+        zoomLevel = newZoom
+
+        // Apply zoom to actual camera device if available
+        applyZoomToDevice(newZoom)
+    }
+
+    @MainActor
+    func finalizeZoom(_ gestureValue: CGFloat) {
+        // Update base zoom level after gesture ends
+        let finalZoom = max(1.0, min(8.0, baseZoomLevel * gestureValue))
+        baseZoomLevel = finalZoom
+        zoomLevel = finalZoom
+        applyZoomToDevice(finalZoom)
+
+        // Play tactical sound for zoom change
+        TacticalSoundPlayer.playNavigation()
+    }
+
+    private func applyZoomToDevice(_ zoom: CGFloat) {
+        // Apply zoom to actual camera device if running
+        guard captureSession.isRunning,
+              let device = captureSession.inputs.first as? AVCaptureDeviceInput else {
+            return
+        }
+
+        do {
+            try device.device.lockForConfiguration()
+
+            // Respect device's actual zoom capabilities
+            let maxZoom = device.device.activeFormat.videoMaxZoomFactor
+            let actualZoom = max(1.0, min(maxZoom, zoom))
+
+            device.device.videoZoomFactor = actualZoom
+            device.device.unlockForConfiguration()
+        } catch {
+            print("Failed to apply zoom: \(error)")
+        }
+    }
+
+    @MainActor
+    func resetZoom() {
+        baseZoomLevel = 1.0
+        zoomLevel = 1.0
+        applyZoomToDevice(1.0)
+        TacticalSoundPlayer.playNavigation()
     }
 }
 

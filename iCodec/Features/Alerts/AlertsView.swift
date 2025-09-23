@@ -70,10 +70,10 @@ struct AlertsView: View {
             // Content
             ScrollView {
                 switch viewModel.selectedTab {
-                case .history:
-                    alertHistorySection
                 case .scheduled:
                     scheduledAlertsSection
+                case .history:
+                    alertHistorySection
                 }
             }
         }
@@ -206,6 +206,11 @@ struct ScheduledAlertCard: View {
             }
 
             Spacer()
+
+            // Priority indicator
+            Circle()
+                .fill(alert.priority.color)
+                .frame(width: 8, height: 8)
 
             Button(action: onDelete) {
                 Text("×")
@@ -377,7 +382,7 @@ struct EditAlertSheet: View {
 class AlertsViewModel: BaseViewModel {
     @Published var alertHistory: [AlertEntry] = []
     @Published var scheduledAlerts: [ScheduledAlert] = []
-    @Published var selectedTab: AlertTab = .history
+    @Published var selectedTab: AlertTab = .scheduled
     @Published var systemStatus: SystemStatus = .operational
     @Published var showScheduleDialog = false
     @Published var showEditDialog = false
@@ -422,32 +427,26 @@ class AlertsViewModel: BaseViewModel {
             timestamp: Date(),
             priority: .medium
         )
-        alertHistory.insert(testAlert, at: 0)
-        persistAlertHistory()
 
-        // Send immediate test notification
-        let content = UNMutableNotificationContent()
-        content.title = "iCodec Test Alert"
-        content.body = "System test notification successful"
-        content.sound = UNNotificationSound.default
+        // Add to history using the new method
+        addToHistory(testAlert)
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(identifier: "test-\(UUID().uuidString)", content: content, trigger: trigger)
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error sending test notification: \(error)")
-            }
-        }
+        // Trigger Metal Gear Solid-style codec alert
+        CodecAlertManager.shared.triggerCodecAlert(
+            title: "Test Alert",
+            message: "System test notification successful",
+            priority: testAlert.priority.toCodecPriority()
+        )
     }
 
-    func scheduleAlert(title: String, message: String, time: Date, repeatOption: RepeatOption) {
+    func scheduleAlert(title: String, message: String, time: Date, repeatOption: RepeatOption, priority: AlertPriority = .medium) {
         let scheduledAlert = ScheduledAlert(
             id: UUID(),
             title: title,
             message: message,
             scheduledTime: time,
-            repeatOption: repeatOption
+            repeatOption: repeatOption,
+            priority: priority
         )
         scheduledAlerts.append(scheduledAlert)
         scheduledAlerts.sort { $0.scheduledTime < $1.scheduledTime }
@@ -459,9 +458,9 @@ class AlertsViewModel: BaseViewModel {
 
     private func scheduleNotification(for alert: ScheduledAlert) {
         let content = UNMutableNotificationContent()
-        content.title = alert.title
-        content.body = alert.message ?? ""
-        content.sound = UNNotificationSound.default
+        content.title = "◄◄ CODEC INCOMING ►►"
+        content.body = "\(alert.title): \(alert.message ?? "")"
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("codec_buzz.wav"))
 
         guard let trigger = makeTrigger(for: alert) else {
             systemStatus = .error
@@ -477,7 +476,10 @@ class AlertsViewModel: BaseViewModel {
                     print("Error scheduling notification: \(error)")
                 } else {
                     self.refreshSystemStatus()
-                    print("Notification scheduled for \(alert.scheduledTime)")
+                    print("Codec notification scheduled for \(alert.scheduledTime)")
+
+                    // When the notification fires, if app is active, show codec alert
+                    // This will be handled by the UNUserNotificationCenterDelegate
                 }
             }
         }
@@ -496,12 +498,17 @@ class AlertsViewModel: BaseViewModel {
         persistAlertHistory()
     }
 
+    func addToHistory(_ alert: AlertEntry) {
+        alertHistory.insert(alert, at: 0) // Add to beginning for most recent first
+        persistAlertHistory()
+    }
+
     func editScheduledAlert(_ alert: ScheduledAlert) {
         alertToEdit = alert
         showEditDialog = true
     }
 
-    func updateScheduledAlert(_ alert: ScheduledAlert, title: String, message: String, time: Date, repeatOption: RepeatOption) {
+    func updateScheduledAlert(_ alert: ScheduledAlert, title: String, message: String, time: Date, repeatOption: RepeatOption, priority: AlertPriority = .medium) {
         if let index = scheduledAlerts.firstIndex(where: { $0.id == alert.id }) {
             // Cancel old notification
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [alert.id.uuidString])
@@ -512,7 +519,8 @@ class AlertsViewModel: BaseViewModel {
                 title: title,
                 message: message,
                 scheduledTime: time,
-                repeatOption: repeatOption
+                repeatOption: repeatOption,
+                priority: priority
             )
             scheduledAlerts[index] = updatedAlert
             scheduledAlerts.sort { $0.scheduledTime < $1.scheduledTime }
@@ -645,11 +653,12 @@ struct ScheduledAlert: Identifiable, Codable {
     let message: String?
     let scheduledTime: Date
     let repeatOption: RepeatOption
+    let priority: AlertPriority
 }
 
 enum AlertTab: String, CaseIterable {
-    case history = "ALERT HISTORY"
     case scheduled = "SCHEDULED ALERTS"
+    case history = "ALERT HISTORY"
 }
 
 enum AlertPriority: String, Codable {
@@ -661,6 +670,15 @@ enum AlertPriority: String, Codable {
         case .medium: return .blue
         case .high: return .orange
         case .critical: return .red
+        }
+    }
+
+    func toCodecPriority() -> CodecAlertPriority {
+        switch self {
+        case .low: return .low
+        case .medium: return .medium
+        case .high: return .high
+        case .critical: return .critical
         }
     }
 }

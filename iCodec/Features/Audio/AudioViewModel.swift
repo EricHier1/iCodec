@@ -19,19 +19,21 @@ class AudioViewModel: NSObject, ObservableObject {
     @Published var hasRecordings = false
 
     private var audioPlayer: AVAudioPlayer?
+    private var radioPlayer: AVPlayer?
     private var audioEngine = AVAudioEngine()
     private var inputNode: AVAudioInputNode?
     private var audioRecorder: AVAudioRecorder?
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
     private var audioLevelTimer: Timer?
+    private var playerObserver: Any?
     private var cancellables = Set<AnyCancellable>()
 
     private let radioStations: [RadioStation] = [
-        RadioStation(id: UUID(), name: "RETRO FM", url: "https://stream.radioparadise.com/rock-320", frequency: "80.5"),
-        RadioStation(id: UUID(), name: "80S HITS", url: "https://streaming.live365.com/a16077", frequency: "81.2"),
-        RadioStation(id: UUID(), name: "NEON RADIO", url: "https://streamingp.shoutcast.com/80s-aac", frequency: "82.7"),
-        RadioStation(id: UUID(), name: "FLASHBACK", url: "https://edge.audioxi.com/80S", frequency: "83.1")
+        RadioStation(id: UUID(), name: "RETRO FM", url: "https://ice1.somafm.com/groovesalad-256-mp3", frequency: "80.5"),
+        RadioStation(id: UUID(), name: "80S HITS", url: "https://ice1.somafm.com/u80s-256-mp3", frequency: "81.2"),
+        RadioStation(id: UUID(), name: "NEON RADIO", url: "https://ice1.somafm.com/lush-256-mp3", frequency: "82.7"),
+        RadioStation(id: UUID(), name: "FLASHBACK", url: "https://ice1.somafm.com/secretagent-256-mp3", frequency: "83.1")
     ]
 
     private var currentStationIndex = 0
@@ -41,6 +43,31 @@ class AudioViewModel: NSObject, ObservableObject {
         setupAudio()
         loadRecordings()
         currentStation = radioStations.first
+        setupVolumeObserver()
+    }
+
+    deinit {
+        // Clean up resources synchronously in deinit
+        radioPlayer?.pause()
+        radioPlayer = nil
+        playerObserver = nil
+
+        audioRecorder?.stop()
+        audioRecorder = nil
+
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+
+        audioLevelTimer?.invalidate()
+        audioLevelTimer = nil
+    }
+
+    private func setupVolumeObserver() {
+        $volume
+            .sink { [weak self] newVolume in
+                self?.radioPlayer?.volume = Float(newVolume)
+            }
+            .store(in: &cancellables)
     }
 
     func handleError(_ error: Error) {
@@ -49,8 +76,17 @@ class AudioViewModel: NSObject, ObservableObject {
 
     private func setupAudio() {
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
-            try AVAudioSession.sharedInstance().setActive(true)
+            // Configure audio session for streaming and recording
+            let session = AVAudioSession.sharedInstance()
+
+            // Use playback category for better streaming performance when not recording
+            if !isRecording {
+                try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowAirPlay])
+            } else {
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP, .allowAirPlay])
+            }
+
+            try session.setActive(true)
         } catch {
             handleError(error)
         }
@@ -66,43 +102,77 @@ class AudioViewModel: NSObject, ObservableObject {
 
     private func playRadio() {
         guard let station = currentStation,
-              let _ = URL(string: station.url) else { return }
+              let url = URL(string: station.url) else { return }
 
-        Task {
-            do {
-                // Simulate loading
-                currentlyPlaying = "CONNECTING..."
-                signalStrength = 1
+        print("🔊 Starting radio playback for: \(station.name) at \(station.url)")
+        currentlyPlaying = "CONNECTING..."
+        signalStrength = 1
 
-                // In a real implementation, use AVPlayer for streaming
-                // For demo purposes, we'll simulate playback
-                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        // Create AVPlayer for streaming
+        radioPlayer = AVPlayer(url: url)
+        radioPlayer?.volume = Float(volume)
 
-                await MainActor.run {
-                    isPlaying = true
-                    currentlyPlaying = "NOW PLAYING: Take On Me - a-ha"
-                    signalStrength = 4
-
-                    // Simulate changing tracks
-                    Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
-                        Task { @MainActor in
-                            self.simulateTrackChange()
-                        }
-                    }
+        // Observe player status
+        playerObserver = radioPlayer?.observe(\.status, options: [.new]) { [weak self] player, _ in
+            DispatchQueue.main.async {
+                switch player.status {
+                case .readyToPlay:
+                    self?.isPlaying = true
+                    self?.currentlyPlaying = "STREAMING: \(station.name)"
+                    self?.signalStrength = 4
+                    player.play()
+                case .failed:
+                    print("🔊 Radio player failed with error: \(player.error?.localizedDescription ?? "Unknown error")")
+                    self?.handleRadioError(player.error)
+                case .unknown:
+                    self?.currentlyPlaying = "BUFFERING..."
+                    self?.signalStrength = 2
+                @unknown default:
+                    break
                 }
-            } catch {
-                await MainActor.run {
-                    handleError(error)
-                    currentlyPlaying = "CONNECTION FAILED"
-                    signalStrength = 0
+            }
+        }
+
+        // Start playback
+        radioPlayer?.play()
+
+        // Simulate track info updates (since most streams don't provide metadata easily)
+        Timer.scheduledTimer(withTimeInterval: 45.0, repeats: true) { _ in
+            Task { @MainActor in
+                if self.isPlaying {
+                    self.simulateTrackChange()
                 }
             }
         }
     }
 
+    private func handleRadioError(_ error: Error?) {
+        isPlaying = false
+        currentlyPlaying = "SIGNAL LOST"
+        signalStrength = 0
+        if let error = error {
+            print("Radio stream error: \(error.localizedDescription)")
+        }
+
+        // Try to switch to next station automatically after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if !self.isPlaying && self.currentStation != nil {
+                print("Auto-switching to next station due to connection failure")
+                self.nextStation()
+            }
+        }
+    }
+
     private func stopRadio() {
-        audioPlayer?.stop()
-        audioPlayer = nil
+        radioPlayer?.pause()
+        radioPlayer = nil
+
+        // Remove observer
+        if playerObserver != nil {
+            // Note: KVO observer will be automatically removed when radioPlayer is deallocated
+            playerObserver = nil
+        }
+
         isPlaying = false
         currentlyPlaying = "STANDBY"
         signalStrength = 0
@@ -123,21 +193,25 @@ class AudioViewModel: NSObject, ObservableObject {
     }
 
     func nextStation() {
+        let wasPlaying = isPlaying
+        stopRadio()
+
         currentStationIndex = (currentStationIndex + 1) % radioStations.count
         currentStation = radioStations[currentStationIndex]
 
-        if isPlaying {
-            stopRadio()
+        if wasPlaying {
             playRadio()
         }
     }
 
     func previousStation() {
+        let wasPlaying = isPlaying
+        stopRadio()
+
         currentStationIndex = currentStationIndex > 0 ? currentStationIndex - 1 : radioStations.count - 1
         currentStation = radioStations[currentStationIndex]
 
-        if isPlaying {
-            stopRadio()
+        if wasPlaying {
             playRadio()
         }
     }
@@ -183,6 +257,17 @@ class AudioViewModel: NSObject, ObservableObject {
             return
         }
 
+        // Reconfigure audio session for recording
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            try session.setActive(true)
+        } catch {
+            handleError(error)
+            recordingStatus = "AUDIO SESSION ERROR"
+            return
+        }
+
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let audioFilename = documentsPath.appendingPathComponent("recording_\(Date().timeIntervalSince1970).m4a")
 
@@ -224,6 +309,9 @@ class AudioViewModel: NSObject, ObservableObject {
 
         stopRecordingTimer()
         stopAudioLevelMonitoring()
+
+        // Reconfigure audio session back to playback mode
+        setupAudio()
 
         // Reload recordings
         loadRecordings()

@@ -4,6 +4,7 @@ import CoreData
 struct ContentView: View {
     @StateObject private var coordinator = AppCoordinator()
     @StateObject private var themeManager = ThemeManager()
+    @StateObject private var codecAlertManager = CodecAlertManager.shared
     @State private var showBootScreen = true
     @State private var currentTime = Date()
     @State private var showMissionStatsDetail = false
@@ -35,6 +36,20 @@ struct ContentView: View {
         .sheet(isPresented: $showMissionStatsDetail) {
             MissionStatsDetailView()
                 .environmentObject(themeManager)
+        }
+        .overlay {
+            // Codec Alert Overlay
+            if codecAlertManager.isShowingAlert, let alert = codecAlertManager.currentAlert {
+                CodecAlertView(alert: alert) {
+                    codecAlertManager.dismissAlert()
+                }
+                .environmentObject(themeManager)
+                .zIndex(1000)
+            }
+        }
+        .onAppear {
+            // Clear badge when app becomes active
+            codecAlertManager.clearBadge()
         }
     }
 

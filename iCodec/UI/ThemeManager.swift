@@ -10,6 +10,31 @@ enum TacticalSoundPlayer {
     static func playAction() {
         AudioServicesPlaySystemSound(1156)
     }
+
+    static func playCodecBuzz() {
+        // Metal Gear Solid-style codec buzzing sound with multiple tones
+        AudioServicesPlaySystemSound(1007) // Tock sound
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            AudioServicesPlaySystemSound(1016) // Alert tone
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            AudioServicesPlaySystemSound(1519) // Peek haptic
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            AudioServicesPlaySystemSound(1520) // Pop haptic
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            AudioServicesPlaySystemSound(1007) // Tock sound again
+        }
+    }
+
+    static func playAlert() {
+        AudioServicesPlaySystemSound(1005) // New mail sound
+    }
 }
 
 @MainActor
