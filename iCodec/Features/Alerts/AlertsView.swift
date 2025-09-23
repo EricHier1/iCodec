@@ -84,13 +84,29 @@ struct AlertsView: View {
         .sheet(isPresented: $viewModel.showEditDialog) {
             EditAlertSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showScheduledAlertDetailDialog) {
+            if let alert = viewModel.scheduledAlertToView {
+                ScheduledAlertDetailView(alert: alert, viewModel: viewModel)
+            }
+        }
+        .sheet(isPresented: $viewModel.showAlertHistoryDetailDialog) {
+            if let alert = viewModel.alertHistoryToView {
+                AlertHistoryDetailView(alert: alert, viewModel: viewModel)
+            }
+        }
     }
 
     private var alertHistorySection: some View {
         LazyVStack(spacing: 8) {
             ForEach(viewModel.alertHistory) { alert in
                 AlertHistoryCard(alert: alert)
+                    .onTapGesture {
+                        viewModel.viewAlertHistoryDetail(alert)
+                    }
                     .contextMenu {
+                        Button("View Details", systemImage: "eye") {
+                            viewModel.viewAlertHistoryDetail(alert)
+                        }
                         Button("Delete Alert", systemImage: "trash", role: .destructive) {
                             viewModel.deleteAlertHistory(alert)
                         }
@@ -111,10 +127,14 @@ struct AlertsView: View {
     private var scheduledAlertsSection: some View {
         LazyVStack(spacing: 8) {
             ForEach(viewModel.scheduledAlerts) { alert in
-                ScheduledAlertCard(alert: alert, onDelete: {
-                    viewModel.deleteScheduledAlert(alert)
-                })
+                ScheduledAlertCard(alert: alert)
+                .onTapGesture {
+                    viewModel.viewScheduledAlertDetail(alert)
+                }
                 .contextMenu {
+                    Button("View Details", systemImage: "eye") {
+                        viewModel.viewScheduledAlertDetail(alert)
+                    }
                     Button("Edit Alert", systemImage: "pencil") {
                         viewModel.editScheduledAlert(alert)
                     }
@@ -182,7 +202,6 @@ struct AlertHistoryCard: View {
 
 struct ScheduledAlertCard: View {
     let alert: ScheduledAlert
-    let onDelete: () -> Void
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {
@@ -211,13 +230,6 @@ struct ScheduledAlertCard: View {
             Circle()
                 .fill(alert.priority.color)
                 .frame(width: 8, height: 8)
-
-            Button(action: onDelete) {
-                Text("×")
-                    .font(.system(size: 16, design: .monospaced))
-                    .foregroundColor(themeManager.errorColor)
-                    .fontWeight(.bold)
-            }
         }
         .padding(10)
         .background(themeManager.surfaceColor.opacity(0.2))
@@ -290,6 +302,7 @@ struct ScheduleAlertSheet: View {
                         )
                         dismiss()
                     }, style: .primary, size: .fullWidth)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .padding(20)
@@ -362,6 +375,7 @@ struct EditAlertSheet: View {
                         }
                         dismiss()
                     }, style: .primary, size: .fullWidth)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .padding(20)
@@ -387,6 +401,10 @@ class AlertsViewModel: BaseViewModel {
     @Published var showScheduleDialog = false
     @Published var showEditDialog = false
     @Published var alertToEdit: ScheduledAlert?
+    @Published var showScheduledAlertDetailDialog = false
+    @Published var scheduledAlertToView: ScheduledAlert?
+    @Published var showAlertHistoryDetailDialog = false
+    @Published var alertHistoryToView: AlertEntry?
 
     private let scheduledAlertsStorageKey = "com.erichier.iccodec.alerts.scheduled"
     private let alertHistoryStorageKey = "com.erichier.iccodec.alerts.history"
@@ -513,6 +531,16 @@ class AlertsViewModel: BaseViewModel {
     func editScheduledAlert(_ alert: ScheduledAlert) {
         alertToEdit = alert
         showEditDialog = true
+    }
+
+    func viewScheduledAlertDetail(_ alert: ScheduledAlert) {
+        scheduledAlertToView = alert
+        showScheduledAlertDetailDialog = true
+    }
+
+    func viewAlertHistoryDetail(_ alert: AlertEntry) {
+        alertHistoryToView = alert
+        showAlertHistoryDetailDialog = true
     }
 
     func updateScheduledAlert(_ alert: ScheduledAlert, title: String, message: String, time: Date, repeatOption: RepeatOption, priority: AlertPriority = .medium) {
@@ -715,6 +743,383 @@ enum SystemStatus {
         case .operational: return .green
         case .warning: return .orange
         case .error: return .red
+        }
+    }
+}
+
+struct ScheduledAlertDetailView: View {
+    let alert: ScheduledAlert
+    let viewModel: AlertsViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    CodecButton(title: "CLOSE", action: {
+                        dismiss()
+                    }, style: .secondary, size: .small)
+
+                    Spacer()
+
+                    Text("SCHEDULED ALERT DETAILS")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    CodecButton(title: "EDIT", action: {
+                        dismiss()
+                        viewModel.editScheduledAlert(alert)
+                    }, style: .primary, size: .small)
+                }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Content
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Alert title and priority
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(alert.title)
+                                    .font(.system(size: 20, design: .monospaced))
+                                    .foregroundColor(themeManager.primaryColor)
+                                    .fontWeight(.bold)
+
+                                Spacer()
+
+                                priorityIndicator
+                            }
+
+                            HStack {
+                                Text("STATUS: SCHEDULED")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(themeManager.warningColor.opacity(0.2))
+                                    .foregroundColor(themeManager.warningColor)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(themeManager.warningColor, lineWidth: 1)
+                                    )
+                                    .cornerRadius(6)
+
+                                Spacer()
+                            }
+                        }
+
+                        // Scheduling info
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("SCHEDULING INFORMATION")
+                                .font(.system(size: 14, design: .monospaced))
+                                .foregroundColor(themeManager.accentColor)
+                                .fontWeight(.bold)
+
+                            VStack(spacing: 8) {
+                                scheduleInfoRow("SCHEDULED TIME", formatDate(alert.scheduledTime))
+                                scheduleInfoRow("REPEAT", alert.repeatOption.rawValue)
+                                scheduleInfoRow("TIME REMAINING", timeRemaining)
+                            }
+                        }
+
+                        // Alert message
+                        if let message = alert.message, !message.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("ALERT MESSAGE")
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.accentColor)
+                                    .fontWeight(.bold)
+
+                                Text(message)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16)
+                                    .background(themeManager.surfaceColor.opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1)
+                                    )
+                                    .cornerRadius(8)
+                            }
+                        }
+
+                        // Actions
+                        VStack(spacing: 12) {
+                            Text("ALERT ACTIONS")
+                                .font(.system(size: 14, design: .monospaced))
+                                .foregroundColor(themeManager.accentColor)
+                                .fontWeight(.bold)
+
+                            HStack(spacing: 12) {
+                                CodecButton(title: "EDIT ALERT", action: {
+                                    dismiss()
+                                    viewModel.editScheduledAlert(alert)
+                                }, style: .secondary, size: .fullWidth)
+
+                                CodecButton(title: "DELETE ALERT", action: {
+                                    viewModel.deleteScheduledAlert(alert)
+                                    dismiss()
+                                }, style: .primary, size: .fullWidth)
+                            }
+                        }
+
+                        Spacer(minLength: 20)
+                    }
+                    .padding(16)
+                }
+            }
+            .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
+        }
+    }
+
+    private var priorityIndicator: some View {
+        Text(alert.priority.rawValue.uppercased())
+            .font(.system(size: 10, design: .monospaced))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(alert.priority.color.opacity(0.2))
+            .foregroundColor(alert.priority.color)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(alert.priority.color, lineWidth: 1)
+            )
+            .cornerRadius(6)
+    }
+
+    private func scheduleInfoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(themeManager.textColor.opacity(0.7))
+                .fontWeight(.bold)
+                .frame(width: 120, alignment: .leading)
+
+            Text(value)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(themeManager.primaryColor)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(themeManager.surfaceColor.opacity(0.1))
+        .cornerRadius(6)
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM dd, yyyy HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private var timeRemaining: String {
+        let interval = alert.scheduledTime.timeIntervalSinceNow
+        if interval <= 0 {
+            return "Overdue"
+        }
+
+        let hours = Int(interval) / 3600
+        let minutes = (Int(interval) % 3600) / 60
+
+        if hours > 24 {
+            let days = hours / 24
+            return "\(days)d \(hours % 24)h"
+        } else if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+}
+
+struct AlertHistoryDetailView: View {
+    let alert: AlertEntry
+    let viewModel: AlertsViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    CodecButton(title: "CLOSE", action: {
+                        dismiss()
+                    }, style: .secondary, size: .small)
+
+                    Spacer()
+
+                    Text("ALERT HISTORY DETAILS")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    CodecButton(title: "DELETE", action: {
+                        viewModel.deleteAlertHistory(alert)
+                        dismiss()
+                    }, style: .primary, size: .small)
+                }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Content
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Alert title and priority
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(alert.title)
+                                    .font(.system(size: 20, design: .monospaced))
+                                    .foregroundColor(themeManager.primaryColor)
+                                    .fontWeight(.bold)
+
+                                Spacer()
+
+                                priorityIndicator
+                            }
+
+                            HStack {
+                                Text("STATUS: COMPLETED")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(themeManager.successColor.opacity(0.2))
+                                    .foregroundColor(themeManager.successColor)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(themeManager.successColor, lineWidth: 1)
+                                    )
+                                    .cornerRadius(6)
+
+                                Spacer()
+
+                                Text("TRIGGERED: \(formatDate(alert.timestamp))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                            }
+                        }
+
+                        // Alert message
+                        if let message = alert.message, !message.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("ALERT MESSAGE")
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.accentColor)
+                                    .fontWeight(.bold)
+
+                                Text(message)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16)
+                                    .background(themeManager.surfaceColor.opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1)
+                                    )
+                                    .cornerRadius(8)
+                            }
+                        }
+
+                        // Timing info
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("TIMING INFORMATION")
+                                .font(.system(size: 14, design: .monospaced))
+                                .foregroundColor(themeManager.accentColor)
+                                .fontWeight(.bold)
+
+                            VStack(spacing: 8) {
+                                timingInfoRow("TRIGGERED", formatDate(alert.timestamp))
+                                timingInfoRow("TIME AGO", timeAgo)
+                            }
+                        }
+
+                        Spacer(minLength: 20)
+                    }
+                    .padding(16)
+                }
+            }
+            .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
+        }
+    }
+
+    private var priorityIndicator: some View {
+        Text(alert.priority.rawValue.uppercased())
+            .font(.system(size: 10, design: .monospaced))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(alert.priority.color.opacity(0.2))
+            .foregroundColor(alert.priority.color)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(alert.priority.color, lineWidth: 1)
+            )
+            .cornerRadius(6)
+    }
+
+    private func timingInfoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(themeManager.textColor.opacity(0.7))
+                .fontWeight(.bold)
+                .frame(width: 120, alignment: .leading)
+
+            Text(value)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(themeManager.primaryColor)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(themeManager.surfaceColor.opacity(0.1))
+        .cornerRadius(6)
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM dd, yyyy HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private var timeAgo: String {
+        let interval = Date().timeIntervalSince(alert.timestamp)
+        let hours = Int(interval) / 3600
+        let minutes = (Int(interval) % 3600) / 60
+
+        if hours > 24 {
+            let days = hours / 24
+            return "\(days) day\(days == 1 ? "" : "s") ago"
+        } else if hours > 0 {
+            return "\(hours) hour\(hours == 1 ? "" : "s") ago"
+        } else if minutes > 0 {
+            return "\(minutes) minute\(minutes == 1 ? "" : "s") ago"
+        } else {
+            return "Just now"
         }
     }
 }
