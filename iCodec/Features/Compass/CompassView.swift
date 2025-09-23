@@ -17,9 +17,15 @@ struct CompassView: View {
 
                 Spacer()
 
-                Text("MAG: \(viewModel.magneticVariation, specifier: "%.1f")°")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(viewModel.isCompassActive ? .green : .red)
+                        .frame(width: 6, height: 6)
+
+                    Text("MAG: \(viewModel.magneticVariation, specifier: "%.1f")°")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(themeManager.textColor.opacity(0.7))
+                }
             }
             .padding(.horizontal, 16)
 
@@ -279,15 +285,17 @@ struct CompassNeedle: View {
 class CompassViewModel: NSObject, ObservableObject {
     @Published var heading: Double = 0
     @Published var magneticVariation: Double = 0
-    @Published var accuracy: Double = 0
+    @Published var accuracy: Double = -1 // Start with invalid accuracy to show status
     @Published var latitude: Double = 0
     @Published var longitude: Double = 0
     @Published var altitude: Double = 0
     @Published var speed: Double = 0
     @Published var course: Double = 0
+    @Published var isCompassActive: Bool = false
 
     private let locationManager = CLLocationManager()
     private let motionManager = CMMotionManager()
+    private var lastHeadingUpdate = Date()
 
     override init() {
         super.init()
@@ -298,7 +306,14 @@ class CompassViewModel: NSObject, ObservableObject {
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.requestWhenInUseAuthorization()
+        locationManager.distanceFilter = 1.0 // Update every meter
+
+        print("🧭 Setting up compass - Location services enabled: \(CLLocationManager.locationServicesEnabled())")
+        print("🧭 Heading available: \(CLLocationManager.headingAvailable())")
+
+        if CLLocationManager.locationServicesEnabled() {
+            locationManager.requestWhenInUseAuthorization()
+        }
     }
 
     private func setupMotionManager() {
@@ -308,19 +323,69 @@ class CompassViewModel: NSObject, ObservableObject {
     }
 
     func startLocationServices() {
-        guard CLLocationManager.locationServicesEnabled() else { return }
+        print("🧭 Starting location services...")
 
-        locationManager.startUpdatingLocation()
-
-        if CLLocationManager.headingAvailable() {
-            locationManager.startUpdatingHeading()
+        guard CLLocationManager.locationServicesEnabled() else {
+            print("🧭 ❌ Location services not enabled")
+            return
         }
 
+        // Check authorization status
+        let authStatus = locationManager.authorizationStatus
+        print("🧭 Authorization status: \(authStatus.rawValue)")
+
+        guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else {
+            print("🧭 ❌ Location not authorized")
+            locationManager.requestWhenInUseAuthorization()
+            return
+        }
+
+        // Start location updates
+        locationManager.startUpdatingLocation()
+        print("🧭 ✅ Started location updates")
+
+        // Start heading updates if available
+        if CLLocationManager.headingAvailable() {
+            locationManager.headingFilter = 1.0 // Update every degree
+            locationManager.startUpdatingHeading()
+            print("🧭 ✅ Started heading updates")
+        } else {
+            print("🧭 ❌ Heading not available on this device")
+        }
+
+        // Start device motion for additional data
         if motionManager.isDeviceMotionAvailable {
             motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
-                guard let motion = motion else { return }
-                // Use device motion for additional compass stabilization if needed
+                if let error = error {
+                    print("🧭 Motion error: \(error.localizedDescription)")
+                    return
+                }
+
+                guard let motion = motion, let self = self else { return }
+
+                // Use device motion for backup heading calculation if CLLocationManager fails
+                let timeSinceLastUpdate = Date().timeIntervalSince(self.lastHeadingUpdate)
+
+                if !self.isCompassActive || timeSinceLastUpdate > 5.0 {
+                    // Calculate heading from device motion as fallback
+                    let attitude = motion.attitude
+                    var yaw = attitude.yaw * 180 / .pi
+
+                    // Convert from mathematical angle to compass heading
+                    yaw = -yaw + 90
+                    if yaw < 0 { yaw += 360 }
+                    if yaw >= 360 { yaw -= 360 }
+
+                    self.heading = yaw
+                    self.accuracy = 10.0 // Indicate lower accuracy
+                    self.isCompassActive = false // Show it's using motion, not magnetometer
+
+                    print("🧭 Using device motion heading: \(yaw)° (fallback)")
+                }
             }
+            print("🧭 ✅ Started device motion updates")
+        } else {
+            print("🧭 ❌ Device motion not available")
         }
     }
 
@@ -395,11 +460,36 @@ class CompassViewModel: NSObject, ObservableObject {
 
 extension CompassViewModel: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        guard newHeading.headingAccuracy > 0 else { return }
+        print("🧭 Heading update - True: \(newHeading.trueHeading)°, Magnetic: \(newHeading.magneticHeading)°, Accuracy: \(newHeading.headingAccuracy)")
 
-        heading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
-        magneticVariation = newHeading.trueHeading - newHeading.magneticHeading
+        // Accept heading even with lower accuracy for better responsiveness
+        guard newHeading.headingAccuracy >= 0 else {
+            print("🧭 ❌ Invalid heading accuracy: \(newHeading.headingAccuracy)")
+            return
+        }
+
+        // Prefer true heading, fall back to magnetic
+        let newHeadingValue = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+
+        // Smooth rapid changes to prevent jittery compass
+        let headingDifference = abs(newHeadingValue - heading)
+        if headingDifference > 180 {
+            // Handle 360° wraparound
+            heading = newHeadingValue
+        } else if headingDifference > 1 {
+            // Smooth large changes
+            heading = newHeadingValue
+        } else {
+            // Small changes - apply directly
+            heading = newHeadingValue
+        }
+
+        magneticVariation = newHeading.trueHeading >= 0 ? newHeading.trueHeading - newHeading.magneticHeading : 0
         accuracy = newHeading.headingAccuracy
+        isCompassActive = true
+        lastHeadingUpdate = Date()
+
+        print("🧭 ✅ Updated heading to: \(heading)°")
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -417,14 +507,25 @@ extension CompassViewModel: CLLocationManagerDelegate {
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        print("🧭 Authorization changed to: \(manager.authorizationStatus.rawValue)")
+
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
+            print("🧭 ✅ Location authorized, starting services")
             startLocationServices()
         case .denied, .restricted:
-            print("Location access denied")
+            print("🧭 ❌ Location access denied or restricted")
+            // Reset values to show compass is not working
+            heading = 0
+            accuracy = -1
+            latitude = 0
+            longitude = 0
+            isCompassActive = false
         case .notDetermined:
+            print("🧭 ⏳ Location permission not determined, requesting...")
             manager.requestWhenInUseAuthorization()
         @unknown default:
+            print("🧭 ❓ Unknown authorization status")
             break
         }
     }

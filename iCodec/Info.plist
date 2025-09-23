@@ -52,6 +52,8 @@
 	<string>iCodec uses location services for mission tracking and tactical positioning.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>iCodec requires microphone access for audio logs and voice recordings.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>iCodec requires photo library access to save captured tactical imagery and surveillance photos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
