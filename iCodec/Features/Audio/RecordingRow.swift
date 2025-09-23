@@ -6,7 +6,7 @@ struct RecordingRow: View {
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {
-        HUDPanel(title: nil) {
+        HUDPanel(title: "RECORDING") {
             HStack(spacing: 12) {
                 // Recording info
                 VStack(alignment: .leading, spacing: 4) {

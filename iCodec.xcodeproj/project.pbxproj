@@ -28,6 +28,8 @@
 		1A00003A000000000000001 /* IntelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00003B000000000000001 /* IntelView.swift */; };
 		1A00003C000000000000001 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00003D000000000000001 /* AlertsView.swift */; };
 		1A000050000000000000001 /* SharedDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000051000000000000001 /* SharedDataManager.swift */; };
+		1A000052000000000000001 /* AudioViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000053000000000000001 /* AudioViewModel.swift */; };
+		1A000054000000000000001 /* RecordingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000055000000000000001 /* RecordingRow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +56,8 @@
 		1A00003B000000000000001 /* IntelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelView.swift; sourceTree = "<group>"; };
 		1A00003D000000000000001 /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
 		1A000051000000000000001 /* SharedDataManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDataManager.swift; sourceTree = "<group>"; };
+		1A000053000000000000001 /* AudioViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioViewModel.swift; sourceTree = "<group>"; };
+		1A000055000000000000001 /* RecordingRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -211,6 +215,8 @@
 			isa = PBXGroup;
 			children = (
 				1A000035000000000000001 /* AudioView.swift */,
+				1A000053000000000000001 /* AudioViewModel.swift */,
+				1A000055000000000000001 /* RecordingRow.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -321,6 +327,8 @@
 				1A000038000000000000001 /* MissionView.swift in Sources */,
 				1A00003A000000000000001 /* IntelView.swift in Sources */,
 				1A00003C000000000000001 /* AlertsView.swift in Sources */,
+				1A000052000000000000001 /* AudioViewModel.swift in Sources */,
+				1A000054000000000000001 /* RecordingRow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

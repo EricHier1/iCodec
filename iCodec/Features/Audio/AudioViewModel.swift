@@ -4,7 +4,7 @@ import MediaPlayer
 import Combine
 
 @MainActor
-class AudioViewModel: BaseViewModel {
+class AudioViewModel: NSObject, ObservableObject {
     @Published var isPlaying = false
     @Published var volume: Double = 0.5
     @Published var currentStation: RadioStation?
@@ -43,9 +43,13 @@ class AudioViewModel: BaseViewModel {
         currentStation = radioStations.first
     }
 
+    func handleError(_ error: Error) {
+        print("AudioViewModel error: \(error.localizedDescription)")
+    }
+
     private func setupAudio() {
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             handleError(error)
@@ -62,7 +66,7 @@ class AudioViewModel: BaseViewModel {
 
     private func playRadio() {
         guard let station = currentStation,
-              let url = URL(string: station.url) else { return }
+              let _ = URL(string: station.url) else { return }
 
         Task {
             do {
@@ -139,10 +143,20 @@ class AudioViewModel: BaseViewModel {
     }
 
     func requestMicrophonePermission() {
-        AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            DispatchQueue.main.async {
-                if !granted {
-                    self.recordingStatus = "MIC ACCESS DENIED"
+        if #available(iOS 17.0, *) {
+            AVAudioApplication.requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    if !granted {
+                        self.recordingStatus = "MIC ACCESS DENIED"
+                    }
+                }
+            }
+        } else {
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    if !granted {
+                        self.recordingStatus = "MIC ACCESS DENIED"
+                    }
                 }
             }
         }
@@ -157,7 +171,14 @@ class AudioViewModel: BaseViewModel {
     }
 
     private func startRecording() {
-        guard AVAudioSession.sharedInstance().recordPermission == .granted else {
+        let hasPermission: Bool
+        if #available(iOS 17.0, *) {
+            hasPermission = AVAudioApplication.shared.recordPermission == .granted
+        } else {
+            hasPermission = AVAudioSession.sharedInstance().recordPermission == .granted
+        }
+
+        guard hasPermission else {
             recordingStatus = "PERMISSION REQUIRED"
             return
         }
