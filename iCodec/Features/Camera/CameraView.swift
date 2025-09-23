@@ -2,6 +2,7 @@ import SwiftUI
 @preconcurrency import AVFoundation
 import Photos
 import AudioToolbox
+import Combine
 
 struct CameraView: View {
     @StateObject private var viewModel = CameraViewModel()
@@ -15,6 +16,7 @@ struct CameraView: View {
                 CameraPreview(session: viewModel.captureSession)
                     .ignoresSafeArea()
                     .scaleEffect(viewModel.zoomLevel)
+                    .id("camera-preview-\(viewModel.cameraAvailable ? 1 : 0)") // Force recreation when availability changes
                     .gesture(
                         SimultaneousGesture(
                             MagnificationGesture()
@@ -100,7 +102,12 @@ struct CameraView: View {
             )
         }
         .onAppear {
-            viewModel.requestPermission()
+            print("📷 CameraView appeared")
+            viewModel.handleViewAppeared()
+        }
+        .onDisappear {
+            print("📷 CameraView disappeared")
+            viewModel.handleViewDisappeared()
         }
     }
 
@@ -232,31 +239,57 @@ struct CameraView: View {
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = UIColor.black
-
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(previewLayer)
-
-        // Store layer in view for frame updates
-        view.layer.name = "previewLayer"
-
+    func makeUIView(context: Context) -> CameraPreviewUIView {
+        let view = CameraPreviewUIView(session: session)
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        guard let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer else {
-            return
-        }
+    func updateUIView(_ uiView: CameraPreviewUIView, context: Context) {
+        uiView.updatePreviewFrame()
+    }
+}
 
-        // Update frame safely on main thread
-        if Thread.isMainThread {
-            previewLayer.frame = uiView.bounds
-        } else {
-            DispatchQueue.main.async {
-                previewLayer.frame = uiView.bounds
+class CameraPreviewUIView: UIView {
+    private let previewLayer: AVCaptureVideoPreviewLayer
+
+    init(session: AVCaptureSession) {
+        self.previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        super.init(frame: .zero)
+        setupPreviewLayer()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupPreviewLayer() {
+        backgroundColor = UIColor.black
+        previewLayer.videoGravity = .resizeAspectFill
+        layer.addSublayer(previewLayer)
+
+        print("📷 📺 Preview layer added to view")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updatePreviewFrame()
+    }
+
+    func updatePreviewFrame() {
+        DispatchQueue.main.async {
+            let newFrame = self.bounds
+            self.previewLayer.frame = newFrame
+            print("📷 📺 Preview layer frame updated to: \(newFrame)")
+
+            // Ensure the preview layer is visible and properly configured
+            if newFrame != .zero {
+                self.previewLayer.isHidden = false
+
+                // Force layer to update
+                self.previewLayer.setNeedsDisplay()
+                self.setNeedsDisplay()
+
+                print("📷 📺 Preview layer visibility: \(!self.previewLayer.isHidden)")
             }
         }
     }
@@ -273,9 +306,11 @@ class CameraViewModel: BaseViewModel {
 
     private var baseZoomLevel: CGFloat = 1.0
 
-    let captureSession = AVCaptureSession()
+    nonisolated let captureSession = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
     private var currentDevice: AVCaptureDevice?
+    private var currentPhotoDelegate: PhotoCaptureDelegate?
+    private var sessionObservers: Set<AnyCancellable> = []
 
     enum CameraFilter: String, CaseIterable {
         case normal = "NORMAL"
@@ -284,160 +319,124 @@ class CameraViewModel: BaseViewModel {
 
     @MainActor
     func requestPermission() {
+        print("📷 Requesting camera permission...")
+
         Task {
             let status = AVCaptureDevice.authorizationStatus(for: .video)
-            print("Current camera authorization status: \(status)")
+            print("📷 Current camera authorization status: \(status)")
 
             switch status {
             case .authorized:
-                print("Camera already authorized, setting up camera")
-                setupCamera()
+                print("📷 Camera already authorized, setting up camera")
+                await setupCamera()
             case .notDetermined:
-                print("Camera permission not determined, requesting access")
+                print("📷 Camera permission not determined, requesting access")
                 let granted = await AVCaptureDevice.requestAccess(for: .video)
-                print("Camera access granted: \(granted)")
+                print("📷 Camera access granted: \(granted)")
                 if granted {
-                    setupCamera()
+                    await setupCamera()
                 } else {
                     isAuthorized = false
                     cameraAvailable = false
                 }
             case .denied, .restricted:
-                print("Camera access denied or restricted")
+                print("📷 Camera access denied or restricted")
                 isAuthorized = false
                 cameraAvailable = false
             @unknown default:
-                print("Unknown camera authorization status")
+                print("📷 Unknown camera authorization status")
                 isAuthorized = false
                 cameraAvailable = false
             }
         }
     }
 
-    nonisolated private func setupCamera() {
-        Task {
-            guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
-                print("Camera permission not granted")
-                await MainActor.run {
-                    isAuthorized = false
-                    cameraAvailable = false
-                }
-                return
+    @MainActor
+    private func setupCamera() async {
+        print("📷 Starting minimal camera setup...")
+
+        // Ultra-simple setup
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            print("📷 ❌ Camera permission not granted")
+            isAuthorized = false
+            cameraAvailable = false
+            return
+        }
+
+        // Get the simplest camera device
+        guard let device = AVCaptureDevice.default(for: .video) else {
+            print("📷 ❌ No camera device available")
+            isAuthorized = true
+            cameraAvailable = false
+            return
+        }
+
+        do {
+            // Stop any existing session first
+            if captureSession.isRunning {
+                captureSession.stopRunning()
             }
 
-            // Check for available camera device
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) ??
-                               AVCaptureDevice.default(for: .video) else {
-                print("No camera device available")
-                await MainActor.run {
-                    isAuthorized = true
-                    cameraAvailable = false
-                }
-                return
-            }
+            // Create input
+            let input = try AVCaptureDeviceInput(device: device)
 
-            do {
-                let input = try AVCaptureDeviceInput(device: device)
+            // Store device reference
+            currentDevice = device
 
-                await MainActor.run {
-                    currentDevice = device
-                    let session = captureSession
-                    let output = photoOutput
+            print("📷 Configuring session...")
 
-                    // Configure session with error handling
-                    session.beginConfiguration()
+            // Configure session
+            captureSession.beginConfiguration()
 
-                    // Remove any existing inputs/outputs safely
-                    for existingInput in session.inputs {
-                        session.removeInput(existingInput)
-                    }
-                    for existingOutput in session.outputs {
-                        session.removeOutput(existingOutput)
-                    }
+            // Remove all existing inputs/outputs
+            captureSession.inputs.forEach { captureSession.removeInput($0) }
+            captureSession.outputs.forEach { captureSession.removeOutput($0) }
 
-                    // Add input with validation
-                    guard session.canAddInput(input) else {
-                        print("❌ Cannot add camera input")
-                        session.commitConfiguration()
-                        isAuthorized = true
-                        cameraAvailable = false
-                        return
-                    }
-                    session.addInput(input)
+            // Add new input and output
+            if captureSession.canAddInput(input) && captureSession.canAddOutput(photoOutput) {
+                captureSession.addInput(input)
+                captureSession.addOutput(photoOutput)
 
-                    // Add photo output with validation
-                    guard session.canAddOutput(output) else {
-                        print("❌ Cannot add photo output")
-                        session.commitConfiguration()
-                        isAuthorized = true
-                        cameraAvailable = false
-                        return
-                    }
-                    session.addOutput(output)
+                // Use simplest preset
+                captureSession.sessionPreset = .medium
 
-                    // Configure photo output settings safely
-                    do {
-                        if #available(iOS 16.0, *) {
-                            // Use new maxPhotoDimensions API for iOS 16+
-                            let maxDimensions = CMVideoDimensions(width: 4032, height: 3024)
-                            output.maxPhotoDimensions = maxDimensions
-                            print("✅ Set max photo dimensions: \(maxDimensions)")
-                        } else {
-                            // Use deprecated API for iOS 15 and below
-                            if output.isHighResolutionCaptureEnabled {
-                                output.isHighResolutionCaptureEnabled = true
-                                print("✅ Enabled high resolution capture")
-                            }
-                        }
-                    } catch {
-                        print("⚠️ Could not configure photo output settings: \(error)")
-                    }
+                captureSession.commitConfiguration()
 
-                    // Set session preset with fallbacks
-                    if session.canSetSessionPreset(.photo) {
-                        session.sessionPreset = .photo
-                        print("✅ Set session preset: photo")
-                    } else if session.canSetSessionPreset(.high) {
-                        session.sessionPreset = .high
-                        print("✅ Set session preset: high")
-                    } else {
-                        session.sessionPreset = .medium
-                        print("⚠️ Using medium quality preset")
-                    }
+                print("📷 ✅ Camera configured successfully")
 
-                    session.commitConfiguration()
-                    isAuthorized = true
-                    cameraAvailable = true
+                // Setup session interruption observers
+                setupSessionObservers()
 
-                    print("✅ Camera setup successful")
-
-                    // Start session on background queue with error handling
+                // Start session and update UI
+                let session = captureSession
+                await withCheckedContinuation { continuation in
                     DispatchQueue.global(qos: .userInitiated).async {
-                        guard !session.isRunning else {
-                            print("⚠️ Session already running")
-                            return
-                        }
-
                         session.startRunning()
+                        print("📷 Camera session startRunning() called")
 
-                        if session.isRunning {
-                            print("✅ Camera session started successfully")
-                        } else {
-                            print("❌ Failed to start camera session")
-                            Task { @MainActor in
-                                self.cameraAvailable = false
-                            }
+                        // Wait a moment for session to actually start
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            self.isAuthorized = true
+                            self.cameraAvailable = true
+                            print("📷 ✅ Camera session started and UI updated")
+
+                            // Force a view refresh to ensure preview appears
+                            self.objectWillChange.send()
+
+                            continuation.resume()
                         }
                     }
                 }
-            } catch {
-                print("Camera setup error: \(error.localizedDescription)")
-                await MainActor.run {
-                    handleError(error)
-                    isAuthorized = true
-                    cameraAvailable = false
-                }
+            } else {
+                print("📷 ❌ Cannot add input/output")
+                captureSession.commitConfiguration()
+                isAuthorized = true
+                cameraAvailable = false
             }
+        } catch {
+            print("📷 ❌ Setup error: \(error)")
+            isAuthorized = true
+            cameraAvailable = false
         }
     }
 
@@ -456,28 +455,12 @@ class CameraViewModel: BaseViewModel {
             return
         }
 
-        // Configure photo settings
-        let settings: AVCapturePhotoSettings
+        // Use simplest photo settings
+        let settings = AVCapturePhotoSettings()
 
-        // Use HEIF format if available (better quality, smaller size)
-        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
-        } else {
-            settings = AVCapturePhotoSettings()
-        }
-
-        // Enable high resolution capture if available
-        if #available(iOS 16.0, *) {
-            // Use new maxPhotoDimensions API for iOS 16+
-            settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
-        } else {
-            // Use deprecated API for iOS 15 and below
-            settings.isHighResolutionPhotoEnabled = photoOutput.isHighResolutionCaptureEnabled
-        }
-
-        // Set flash mode to auto
+        // Only set flash if device supports it
         if let device = currentDevice, device.hasFlash {
-            settings.flashMode = .auto
+            settings.flashMode = .off
         }
 
         print("Capturing photo with settings: \(settings)")
@@ -485,7 +468,10 @@ class CameraViewModel: BaseViewModel {
         // Play camera shutter sound
         AudioServicesPlaySystemSound(1108) // Camera shutter sound
 
-        photoOutput.capturePhoto(with: settings, delegate: PhotoCaptureDelegate())
+        // Create delegate instance that will handle the photo
+        let delegate = PhotoCaptureDelegate()
+        currentPhotoDelegate = delegate // Keep strong reference
+        photoOutput.capturePhoto(with: settings, delegate: delegate)
     }
 
     @MainActor
@@ -500,99 +486,13 @@ class CameraViewModel: BaseViewModel {
         if let currentIndex = filters.firstIndex(of: currentFilter) {
             let nextIndex = (currentIndex + 1) % filters.count
             currentFilter = filters[nextIndex]
-
-            // Apply camera settings for night vision only if camera is available
-            if cameraAvailable && isAuthorized {
-                if currentFilter == .nightVision {
-                    enableNightVisionMode()
-                } else {
-                    disableNightVisionMode()
-                }
-            }
-
-            // Apply audio feedback for filter change
+            // No camera modifications - just UI overlay changes
             objectWillChange.send()
         }
     }
 
-    private func enableNightVisionMode() {
-        guard cameraAvailable, let device = currentDevice else {
-            print("🌙 Cannot enable night vision - camera not available")
-            return
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try device.lockForConfiguration()
-
-                // Check if device supports exposure bias
-                if device.isExposureModeSupported(.custom) && device.maxExposureTargetBias > 0 {
-                    let maxBias = device.maxExposureTargetBias
-                    let targetBias = min(maxBias, 1.5) // Conservative exposure increase
-                    device.setExposureTargetBias(targetBias) { time in
-                        print("🌙 Night vision exposure adjusted to \(targetBias)")
-                    }
-
-                    Task { @MainActor in
-                        self.exposureBias = targetBias
-                    }
-                }
-
-                // Check if device supports manual ISO
-                if device.isExposureModeSupported(.custom) {
-                    let maxISO = device.activeFormat.maxISO
-                    let minISO = device.activeFormat.minISO
-                    let targetISO = min(maxISO, max(minISO, 800)) // Conservative ISO
-
-                    let currentDuration = device.exposureDuration
-                    device.setExposureModeCustom(duration: currentDuration, iso: targetISO) { time in
-                        print("🌙 Night vision ISO set to: \(targetISO)")
-                    }
-
-                    Task { @MainActor in
-                        self.isoValue = targetISO
-                    }
-                }
-
-                device.unlockForConfiguration()
-                print("🌙 Night vision mode enabled successfully")
-            } catch {
-                print("❌ Failed to enable night vision: \(error)")
-                // Reset to auto mode if manual settings fail
-                Task { @MainActor in
-                    self.disableNightVisionMode()
-                }
-            }
-        }
-    }
-
-    private func disableNightVisionMode() {
-        guard cameraAvailable, let device = currentDevice else {
-            print("🌙 Cannot disable night vision - camera not available")
-            return
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try device.lockForConfiguration()
-
-                // Reset exposure to auto mode safely
-                if device.isExposureModeSupported(.autoExpose) {
-                    device.exposureMode = .autoExpose
-                }
-
-                Task { @MainActor in
-                    self.exposureBias = 0.0
-                    self.isoValue = 0.0
-                }
-
-                device.unlockForConfiguration()
-                print("🌙 Night vision mode disabled successfully")
-            } catch {
-                print("❌ Failed to disable night vision: \(error)")
-            }
-        }
-    }
+    // Removed night vision hardware modifications to prevent crashes
+    // Night vision is now just a visual overlay effect
 
     @MainActor
     func updateZoom(_ gestureValue: CGFloat) {
@@ -617,25 +517,9 @@ class CameraViewModel: BaseViewModel {
     }
 
     private func applyZoomToDevice(_ zoom: CGFloat) {
-        // Apply zoom to actual camera device if available
-        guard cameraAvailable, captureSession.isRunning, let device = currentDevice else {
-            return
-        }
-
-        do {
-            try device.lockForConfiguration()
-
-            // Respect device's actual zoom capabilities
-            let maxZoom = device.activeFormat.videoMaxZoomFactor
-            let actualZoom = max(1.0, min(maxZoom, zoom))
-
-            device.videoZoomFactor = actualZoom
-            device.unlockForConfiguration()
-
-            print("Applied zoom: \(actualZoom)x (max: \(maxZoom)x)")
-        } catch {
-            print("Failed to apply zoom: \(error)")
-        }
+        // Disabled hardware zoom to prevent crashes
+        // Zoom is now handled by UI scaling only
+        print("UI zoom: \(zoom)x")
     }
 
     @MainActor
@@ -645,59 +529,204 @@ class CameraViewModel: BaseViewModel {
         applyZoomToDevice(1.0)
         TacticalSoundPlayer.playNavigation()
     }
+
+    @MainActor
+    func handleViewAppeared() {
+        print("📷 Handle view appeared")
+
+        // Always request permission check first
+        requestPermission()
+
+        // Ensure camera session is running after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.ensureCameraRunning()
+        }
+
+        // Double-check after a longer delay if still not working
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if self.isAuthorized && !self.cameraAvailable {
+                print("📷 ⚠️ Camera still not available after 1s, forcing restart")
+                self.restartCamera()
+            } else if self.isAuthorized && self.cameraAvailable {
+                // Camera is available but preview might not be showing - force refresh
+                print("📷 🔄 Forcing preview refresh")
+                self.objectWillChange.send()
+            }
+        }
+    }
+
+    @MainActor
+    func handleViewDisappeared() {
+        print("📷 Handle view disappeared")
+        // Don't stop the session completely, just note that view disappeared
+    }
+
+    @MainActor
+    func ensureCameraRunning() {
+        guard isAuthorized else {
+            print("📷 Camera not authorized, cannot ensure running")
+            return
+        }
+
+        let session = captureSession
+        if !session.isRunning {
+            print("📷 Camera session not running, restarting...")
+            DispatchQueue.global(qos: .userInitiated).async {
+                session.startRunning()
+                DispatchQueue.main.async {
+                    print("📷 ✅ Camera session restarted")
+                    self.cameraAvailable = true
+                }
+            }
+        } else {
+            print("📷 ✅ Camera session already running")
+            cameraAvailable = true
+        }
+    }
+
+    @MainActor
+    func restartCamera() {
+        print("📷 🔄 Force restarting camera...")
+
+        // Reset state
+        cameraAvailable = false
+
+        // Stop current session
+        let session = captureSession
+        if session.isRunning {
+            DispatchQueue.global(qos: .userInitiated).async {
+                session.stopRunning()
+                DispatchQueue.main.async {
+                    // Restart setup after stopping
+                    Task {
+                        await self.setupCamera()
+                    }
+                }
+            }
+        } else {
+            // If not running, just setup again
+            Task {
+                await setupCamera()
+            }
+        }
+    }
+
+    @MainActor
+    private func setupSessionObservers() {
+        // Clear any existing observers
+        sessionObservers.removeAll()
+
+        // Observe session interruptions
+        NotificationCenter.default
+            .publisher(for: .AVCaptureSessionWasInterrupted)
+            .sink { [weak self] notification in
+                print("📷 ⚠️ Camera session was interrupted")
+                if let reason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? AVCaptureSession.InterruptionReason {
+                    print("📷 Interruption reason: \(reason)")
+                }
+                DispatchQueue.main.async {
+                    self?.cameraAvailable = false
+                }
+            }
+            .store(in: &sessionObservers)
+
+        // Observe session resumption
+        NotificationCenter.default
+            .publisher(for: .AVCaptureSessionInterruptionEnded)
+            .sink { [weak self] _ in
+                print("📷 ✅ Camera session interruption ended")
+                DispatchQueue.main.async {
+                    self?.ensureCameraRunning()
+                }
+            }
+            .store(in: &sessionObservers)
+
+        // Observe runtime errors
+        NotificationCenter.default
+            .publisher(for: .AVCaptureSessionRuntimeError)
+            .sink { [weak self] notification in
+                print("📷 ❌ Camera session runtime error")
+                if let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error {
+                    print("📷 Runtime error: \(error.localizedDescription)")
+                }
+                DispatchQueue.main.async {
+                    self?.restartCamera()
+                }
+            }
+            .store(in: &sessionObservers)
+    }
+
+    deinit {
+        sessionObservers.removeAll()
+    }
 }
 
 
 private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        print("📷 Photo output delegate called")
+
         if let error = error {
-            print("Photo capture error: \(error.localizedDescription)")
+            print("📷 ❌ Photo capture error: \(error.localizedDescription)")
             return
         }
 
         guard let imageData = photo.fileDataRepresentation() else {
-            print("Unable to create image data from photo")
+            print("📷 ❌ Unable to create image data from photo")
             return
         }
 
-        print("Photo captured successfully, size: \(imageData.count) bytes")
+        print("📷 ✅ Photo captured successfully, size: \(imageData.count) bytes")
 
         // Save to photo library
         savePhotoToLibrary(imageData: imageData)
     }
 
     private func savePhotoToLibrary(imageData: Data) {
+        print("📷 💾 Requesting photo library access...")
+
         // Request photo library permission if needed
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            print("📷 💾 Photo library authorization status: \(status)")
+
             DispatchQueue.main.async {
                 switch status {
-                case .authorized, .limited:
+                case .authorized:
+                    print("📷 💾 Photo library access authorized - saving photo")
                     self.performPhotoSave(imageData: imageData)
-                case .denied, .restricted:
-                    print("Photo library access denied")
+                case .limited:
+                    print("📷 💾 Photo library access limited - saving photo")
+                    self.performPhotoSave(imageData: imageData)
+                case .denied:
+                    print("📷 ❌ Photo library access denied")
+                case .restricted:
+                    print("📷 ❌ Photo library access restricted")
                 case .notDetermined:
-                    print("Photo library access not determined")
+                    print("📷 ❓ Photo library access not determined")
                 @unknown default:
-                    print("Unknown photo library authorization status")
+                    print("📷 ❓ Unknown photo library authorization status")
                 }
             }
         }
     }
 
     private func performPhotoSave(imageData: Data) {
+        print("📷 💾 Starting photo save process...")
+
         PHPhotoLibrary.shared().performChanges({
+            print("📷 💾 Creating photo asset...")
             let creationRequest = PHAssetCreationRequest.forAsset()
             creationRequest.addResource(with: .photo, data: imageData, options: nil)
         }) { success, error in
             DispatchQueue.main.async {
                 if success {
-                    print("✅ Photo saved to library successfully")
+                    print("📷 ✅ Photo saved to library successfully!")
                     // Play success sound
                     TacticalSoundPlayer.playSuccess()
                 } else if let error = error {
-                    print("❌ Failed to save photo: \(error.localizedDescription)")
+                    print("📷 ❌ Failed to save photo: \(error.localizedDescription)")
                 } else {
-                    print("❌ Failed to save photo: Unknown error")
+                    print("📷 ❌ Failed to save photo: Unknown error")
                 }
             }
         }
@@ -706,84 +735,27 @@ private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 
 struct NightVisionOverlay: View {
     let themeManager: ThemeManager
-    @State private var shimmer: Bool = false
 
     var body: some View {
         ZStack {
-            // Green tint for night vision
+            // Simple green tint - no complex effects
             Rectangle()
                 .fill(Color.green)
                 .blendMode(.overlay)
-                .opacity(0.3)
+                .opacity(0.2)
 
-            // Brightness boost effect
-            Rectangle()
-                .fill(Color.white)
-                .blendMode(.overlay)
-                .opacity(0.1)
-
-            // Simple static noise pattern (no animation to prevent crashes)
-            StaticNoisePattern()
-                .blendMode(.overlay)
-                .opacity(0.1)
-
-            // Vignette effect for authentic night vision look
-            RadialGradient(
-                colors: [Color.clear, Color.black.opacity(0.3)],
-                center: .center,
-                startRadius: 100,
-                endRadius: 300
-            )
-            .blendMode(.multiply)
-
-            // Simple scanning effect
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.clear, Color.green.opacity(0.1), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .opacity(shimmer ? 0.3 : 0.1)
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                        shimmer.toggle()
-                    }
-                }
-
-            // Corner display indicators
+            // Simple corner indicator
             VStack {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("NV")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.green)
-                            .fontWeight(.bold)
-
-                        Text("GAIN: AUTO")
-                            .font(.system(size: 8, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.8))
-                    }
-                    .padding(8)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(4)
+                    Text("NIGHT VISION")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.green)
+                        .fontWeight(.bold)
+                        .padding(8)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(4)
 
                     Spacer()
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("LOW LIGHT")
-                            .font(.system(size: 8, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.8))
-
-                        Text("IR: ON")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.green)
-                            .fontWeight(.bold)
-                    }
-                    .padding(8)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(4)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 60)
@@ -794,21 +766,4 @@ struct NightVisionOverlay: View {
     }
 }
 
-struct StaticNoisePattern: View {
-    var body: some View {
-        Rectangle()
-            .fill(
-                RadialGradient(
-                    colors: [
-                        Color.white.opacity(0.1),
-                        Color.clear,
-                        Color.white.opacity(0.05),
-                        Color.clear
-                    ],
-                    center: .center,
-                    startRadius: 10,
-                    endRadius: 50
-                )
-            )
-    }
-}
+// Removed StaticNoisePattern to prevent any potential animation issues
