@@ -12,6 +12,9 @@ class SharedDataManager: ObservableObject {
     let mapViewModel = MapViewModel()
     let audioViewModel = AudioViewModel()
 
+    // App Coordinator for navigation
+    var appCoordinator: AppCoordinator?
+
     // Mission Stats
     @Published var activeMissionCount: Int = 0
     @Published var todayCompletedCount: Int = 0

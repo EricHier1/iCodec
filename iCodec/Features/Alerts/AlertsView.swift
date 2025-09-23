@@ -466,7 +466,7 @@ class AlertsViewModel: BaseViewModel {
     private func scheduleNotification(for alert: ScheduledAlert) {
         let content = UNMutableNotificationContent()
         content.title = "◄◄ CODEC INCOMING ►►"
-        content.body = "\(alert.title): \(alert.message ?? "")"
+        content.body = alert.message?.isEmpty == false ? "\(alert.title): \(alert.message!)" : alert.title
         content.sound = UNNotificationSound.default
 
         guard let trigger = makeTrigger(for: alert) else {

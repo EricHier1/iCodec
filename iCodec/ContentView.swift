@@ -55,6 +55,8 @@ struct ContentView: View {
             codecAlertManager.clearBadge()
             // Update navigation modules in case tab order changed
             navigationModules = AppModule.navigationModules
+            // Set coordinator reference in SharedDataManager for notification handling
+            SharedDataManager.shared.appCoordinator = coordinator
         }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
             // Update tab order when settings change

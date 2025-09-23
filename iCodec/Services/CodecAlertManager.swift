@@ -249,6 +249,14 @@ extension CodecAlertManager: UNUserNotificationCenterDelegate {
 
             // Handle scheduled alert completion - add to history
             handleScheduledAlertCompletion(notificationId: response.notification.request.identifier)
+
+            // Navigate to alerts view when notification is tapped
+            if let coordinator = SharedDataManager.shared.appCoordinator {
+                coordinator.currentModule = .alerts
+
+                // If there's a specific alert, show it in history tab
+                SharedDataManager.shared.alertsViewModel.selectedTab = .history
+            }
         }
 
         completionHandler()
