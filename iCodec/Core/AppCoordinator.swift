@@ -36,10 +36,11 @@ enum AppModule: String, CaseIterable {
     case intel = "INTEL"
     case alerts = "ALERTS"
     case audio = "AUDIO"
+    case camera = "CAMERA"
     case settings = "SETTINGS"
 
     static var navigationModules: [AppModule] {
-        [.mission, .map, .intel, .alerts, .audio]
+        [.mission, .map, .intel, .alerts, .audio, .camera]
     }
 
     var glyph: String {
@@ -49,6 +50,7 @@ enum AppModule: String, CaseIterable {
         case .intel: return "INT"
         case .alerts: return "ALR"
         case .audio: return "COM"
+        case .camera: return "CAM"
         case .settings: return "SET"
         }
     }

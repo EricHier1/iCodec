@@ -183,7 +183,6 @@ struct ContentView: View {
                 .font(.system(size: 24, design: .monospaced))
                 .fontWeight(.bold)
                 .foregroundColor(themeManager.primaryColor)
-                .textCase(.uppercase)
                 .shadow(color: themeManager.primaryColor.opacity(0.5), radius: 5)
         }
         .padding(.horizontal, 16)
@@ -197,19 +196,24 @@ struct ContentView: View {
     }
 
     private var navigationMenu: some View {
-        HStack(spacing: 8) {
-            ForEach(AppModule.navigationModules, id: \.self) { module in
-                NavigationItem(
-                    module: module,
-                    isActive: coordinator.currentModule == module
-                ) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        coordinator.currentModule = module
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(AppModule.navigationModules, id: \.self) { module in
+                    NavigationItem(
+                        module: module,
+                        isActive: coordinator.currentModule == module
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            coordinator.currentModule = module
+                        }
                     }
+                    .frame(minWidth: 80) // Ensure consistent minimum width
                 }
             }
+            .padding(.horizontal, 8)
         }
-        .padding(.horizontal, 8)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollIndicators(.hidden)
     }
 
     private var contentArea: some View {
@@ -225,6 +229,8 @@ struct ContentView: View {
                 AlertsView()
             case .audio:
                 AudioView()
+            case .camera:
+                CameraView()
             case .settings:
                 SettingsView()
             }
