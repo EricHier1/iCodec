@@ -15,8 +15,9 @@ struct MapView: View {
             hudOverlay
         }
         .onAppear {
-            viewModel.requestLocationPermission()
-            viewModel.centerOnUser()
+            if !viewModel.hasInitialLocation {
+                viewModel.requestLocationPermission()
+            }
         }
         .sheet(isPresented: $viewModel.showWaypointEditor) {
             WaypointEditorSheet(viewModel: viewModel)
@@ -34,40 +35,62 @@ struct MapView: View {
     }
 
     private var mapSurface: some View {
-        Map(position: $viewModel.cameraPosition) {
-            ForEach(viewModel.waypoints) { waypoint in
-                Annotation(waypoint.name.isEmpty ? waypoint.id : waypoint.name, coordinate: waypoint.coordinate) {
-                    WaypointMarker(waypoint: waypoint, themeManager: themeManager)
-                        .onTapGesture {
-                            viewModel.selectWaypoint(waypoint)
+        Group {
+            if viewModel.hasInitialLocation {
+                Map(position: $viewModel.cameraPosition) {
+                    ForEach(viewModel.waypoints) { waypoint in
+                        Annotation(waypoint.name.isEmpty ? waypoint.id : waypoint.name, coordinate: waypoint.coordinate) {
+                            WaypointMarker(waypoint: waypoint, themeManager: themeManager)
+                                .onTapGesture {
+                                    viewModel.selectWaypoint(waypoint)
+                                }
                         }
-                }
-                .annotationTitles(.hidden)
-            }
+                        .annotationTitles(.hidden)
+                    }
 
-            if let userLocation = viewModel.userLocation {
-                Annotation("Agent", coordinate: userLocation) {
-                    UserLocationMarker(primaryColor: themeManager.successColor, accentColor: themeManager.primaryColor)
-                }
-                .annotationTitles(.hidden)
-            }
+                    if let userLocation = viewModel.userLocation {
+                        Annotation("Agent", coordinate: userLocation) {
+                            UserLocationMarker(primaryColor: themeManager.successColor, accentColor: themeManager.primaryColor)
+                        }
+                        .annotationTitles(.hidden)
+                    }
 
-        }
-        .mapStyle(viewModel.currentMapStyle)
-        .onMapCameraChange { context in
-            viewModel.updateCameraRegion(context.region)
-        }
-        .mapControlVisibility(.hidden)
-        .ignoresSafeArea()
-        .colorScheme(viewModel.currentMode == .dark ? .dark : .light)
-        .overlay(
-            TacticalGridOverlay()
-                .opacity(viewModel.currentMode == .tactical || viewModel.currentMode == .dark ? 0.1 : 0)
-                .allowsHitTesting(false)
-        )
-        .overlay(alignment: .center) {
-            CenterTargetView(color: themeManager.primaryColor)
-                .allowsHitTesting(false)
+                }
+                .mapStyle(viewModel.currentMapStyle)
+                .onMapCameraChange { context in
+                    viewModel.updateCameraRegion(context.region)
+                }
+                .mapControlVisibility(.hidden)
+                .ignoresSafeArea()
+                .colorScheme(viewModel.currentMode == .dark ? .dark : .light)
+                .overlay(
+                    TacticalGridOverlay()
+                        .opacity(viewModel.currentMode == .tactical || viewModel.currentMode == .dark ? 0.1 : 0)
+                        .allowsHitTesting(false)
+                )
+                .overlay(alignment: .center) {
+                    CenterTargetView(color: themeManager.primaryColor)
+                        .allowsHitTesting(false)
+                }
+            } else {
+                // Show loading state until we have location
+                ZStack {
+                    Rectangle()
+                        .fill(themeManager.backgroundColor)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: themeManager.primaryColor))
+                            .scaleEffect(1.5)
+
+                        Text("ACQUIRING LOCATION...")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(themeManager.primaryColor)
+                            .fontWeight(.bold)
+                    }
+                }
+            }
         }
     }
 
@@ -135,7 +158,7 @@ struct MapView: View {
             CodecButton(title: "MORE", action: {
                 TacticalSoundPlayer.playNavigation()
                 showMapActions = true
-            }, style: .secondary, size: .small)
+            }, style: .primary, size: .small)
             .disabled(viewModel.waypoints.isEmpty)
         }
     }
@@ -343,13 +366,13 @@ struct WaypointMarker: View {
 @MainActor
 class MapViewModel: BaseViewModel {
     @Published var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+        center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
         span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
     )
 
     @Published var cameraPosition = MapCameraPosition.region(
         MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+            center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
         )
     )
@@ -358,20 +381,21 @@ class MapViewModel: BaseViewModel {
     @Published var currentMode: MapMode = .dark
     @Published var scaleText = "≈1.1 km"
     @Published var userLocation: CLLocationCoordinate2D?
-    @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+    @Published var mapCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 0, longitude: 0)
     @Published var hasInitialLocation = false
     @Published var selectedWaypoint: Waypoint?
     @Published var showWaypointEditor = false
     @Published var lastKnownLocation: CLLocation?
+    @Published var locationError: String?
 
     private let locationManager = CLLocationManager()
     private var locationDelegate: MapLocationDelegate?
+    private var locationTimeout: Timer?
 
     enum MapMode: String, CaseIterable {
         case tactical = "TACTICAL"
         case dark = "DARK"
         case satellite = "SATELLITE"
-        case infrared = "INFRARED"
     }
 
     var currentMapStyle: MapStyle {
@@ -382,8 +406,6 @@ class MapViewModel: BaseViewModel {
             return .standard(elevation: .flat, pointsOfInterest: .excludingAll)
         case .satellite:
             return .imagery(elevation: .flat)
-        case .infrared:
-            return .hybrid(elevation: .flat, pointsOfInterest: .excludingAll)
         }
     }
 
@@ -397,45 +419,87 @@ class MapViewModel: BaseViewModel {
 
     private func setupLocationManager() {
         locationDelegate = MapLocationDelegate { [weak self] location in
-            self?.updateRegion(with: location)
+            Task { @MainActor in
+                self?.updateRegion(with: location)
+            }
         }
         locationManager.delegate = locationDelegate
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 5
+        locationManager.distanceFilter = 10
         locationManager.pausesLocationUpdatesAutomatically = false
     }
 
     func requestLocationPermission() {
+        print("MapViewModel: Requesting location permission, current status: \(locationManager.authorizationStatus.rawValue)")
+        locationError = nil
+
         switch locationManager.authorizationStatus {
         case .notDetermined:
+            print("MapViewModel: Requesting authorization...")
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.startUpdatingLocation()
-            locationManager.requestLocation()
-            if let existing = locationManager.location {
-                updateRegion(with: existing)
-            }
+            print("MapViewModel: Permission granted, starting location services...")
+            startLocationServices()
+        case .denied, .restricted:
+            print("MapViewModel: Location permission denied")
+            locationError = "Location access denied"
+            useDefaultLocation()
         default:
+            print("MapViewModel: Unknown authorization status")
             break
         }
     }
 
+    private func startLocationServices() {
+        // Always request fresh location, don't use cached
+        print("MapViewModel: Requesting fresh location...")
+        locationManager.startUpdatingLocation()
+
+        // Start a timeout timer in case location services are slow
+        startLocationTimeout()
+    }
+
+    private func startLocationTimeout() {
+        locationTimeout?.invalidate()
+        locationTimeout = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if !self.hasInitialLocation {
+                    self.locationError = "Location timeout"
+                    self.useDefaultLocation()
+                }
+            }
+        }
+    }
+
+    private func useDefaultLocation() {
+        // Use a default location if we can't get user location
+        let defaultLocation = CLLocation(latitude: 37.7749, longitude: -122.4194) // San Francisco as fallback
+        updateRegion(with: defaultLocation)
+    }
+
     private func updateRegion(with location: CLLocation) {
+        print("MapViewModel: Updating region with location: \(location.coordinate)")
+        locationTimeout?.invalidate() // Cancel timeout since we got location
         userLocation = location.coordinate
         lastKnownLocation = location
 
         // Always center the map on the user's location when we first get it
         if !hasInitialLocation {
-            DispatchQueue.main.async {
-                let newRegion = MKCoordinateRegion(
-                    center: location.coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )
-                self.region = newRegion
-                self.cameraPosition = .region(newRegion)
-                self.updateMapCenter()
-                self.updateScaleText(for: newRegion)
-                self.hasInitialLocation = true
+            print("MapViewModel: Setting initial location to: \(location.coordinate)")
+            let newRegion = MKCoordinateRegion(
+                center: location.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+            self.region = newRegion
+            self.cameraPosition = .region(newRegion)
+            self.updateMapCenter()
+            self.updateScaleText(for: newRegion)
+            self.hasInitialLocation = true
+
+            // Create sample waypoints relative to user location if we don't have any
+            if self.waypoints.isEmpty {
+                self.createSampleWaypointsNearLocation(location.coordinate)
             }
         }
     }
@@ -553,12 +617,12 @@ class MapViewModel: BaseViewModel {
     }
 
     private func generateSampleWaypoints() {
-        waypoints = [
-            Waypoint(id: "A", name: "Primary Target", coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), type: .objective),
-            Waypoint(id: "B", name: "Checkpoint Alpha", coordinate: CLLocationCoordinate2D(latitude: 37.7849, longitude: -122.4094), type: .checkpoint),
-            Waypoint(id: "C", name: "Intel Point", coordinate: CLLocationCoordinate2D(latitude: 37.7649, longitude: -122.4294), type: .intel),
-            Waypoint(id: "E", name: "Extraction Zone", coordinate: CLLocationCoordinate2D(latitude: 37.7949, longitude: -122.3994), type: .extraction)
-        ]
+        // Start with empty waypoints - will be populated relative to user location
+        waypoints = []
+    }
+
+    private func createSampleWaypointsNearLocation(_ location: CLLocationCoordinate2D) {
+        // No sample waypoints - user will create their own
     }
 }
 
@@ -582,19 +646,26 @@ private class MapLocationDelegate: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+        print("MapLocationDelegate: Received location update: \(location.coordinate)")
         locationUpdate(location)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        // CLLocationManager requires delegates to handle failures even if we ignore them.
+        print("Location error: \(error.localizedDescription)")
+        // Try to use cached location as fallback
+        if let cachedLocation = manager.location {
+            locationUpdate(cachedLocation)
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        print("MapLocationDelegate: Authorization changed to: \(status.rawValue)")
         switch status {
         case .authorizedWhenInUse, .authorizedAlways:
+            print("MapLocationDelegate: Starting location updates for fresh location")
             manager.startUpdatingLocation()
-            manager.requestLocation()
         default:
+            print("MapLocationDelegate: Location not authorized")
             break
         }
     }
