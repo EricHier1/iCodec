@@ -2,8 +2,12 @@ import SwiftUI
 import AVFoundation
 
 struct AudioView: View {
-    @ObservedObject private var viewModel = SharedDataManager.shared.audioViewModel
+    @ObservedObject private var sharedData = SharedDataManager.shared
     @EnvironmentObject private var themeManager: ThemeManager
+
+    private var viewModel: AudioViewModel {
+        sharedData.audioViewModel
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -134,7 +138,7 @@ struct AudioView: View {
                                 .font(.system(size: 8, design: .monospaced))
                                 .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                            Slider(value: $viewModel.volume, in: 0...1)
+                            Slider(value: $sharedData.audioViewModel.volume, in: 0...1)
                                 .frame(width: 80)
                                 .tint(themeManager.primaryColor)
                         }
@@ -254,7 +258,7 @@ struct AudioView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                            TextField("", text: $viewModel.customStationName)
+                            TextField("", text: $sharedData.audioViewModel.customStationName)
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.primaryColor)
@@ -272,7 +276,7 @@ struct AudioView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                            TextField("", text: $viewModel.customStationFrequency)
+                            TextField("", text: $sharedData.audioViewModel.customStationFrequency)
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.primaryColor)
@@ -292,7 +296,7 @@ struct AudioView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                        TextField("https://example.com/stream", text: $viewModel.customStationURL)
+                        TextField("https://example.com/stream", text: $sharedData.audioViewModel.customStationURL)
                             .textFieldStyle(PlainTextFieldStyle())
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(themeManager.primaryColor)

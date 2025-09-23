@@ -55,6 +55,10 @@ class ThemeManager: ObservableObject {
         palette(for: currentTheme)
     }
 
+    init() {
+        loadPersistedTheme()
+    }
+
     var primaryColor: Color { currentPalette.primary }
     var secondaryColor: Color { currentPalette.secondary }
     var accentColor: Color { currentPalette.accent }
@@ -68,6 +72,7 @@ class ThemeManager: ObservableObject {
     func switchTheme(to theme: CodecTheme) {
         withAnimation(.easeInOut(duration: 0.3)) {
             currentTheme = theme
+            saveTheme()
         }
     }
 
@@ -85,6 +90,7 @@ class ThemeManager: ObservableObject {
             accentHex: normalizedAccent
         )
 
+        saveCustomPalette()
         return true
     }
 
@@ -131,13 +137,38 @@ class ThemeManager: ObservableObject {
 
         return "#" + cleaned
     }
+
+    private func saveTheme() {
+        UserDefaults.standard.set(currentTheme.rawValue, forKey: "selected_theme")
+    }
+
+    private func saveCustomPalette() {
+        let encoder = JSONEncoder()
+        if let encoded = try? encoder.encode(customPalette) {
+            UserDefaults.standard.set(encoded, forKey: "custom_theme_palette")
+        }
+    }
+
+    private func loadPersistedTheme() {
+        // Load custom palette first
+        if let data = UserDefaults.standard.data(forKey: "custom_theme_palette"),
+           let decoded = try? JSONDecoder().decode(CustomThemePalette.self, from: data) {
+            customPalette = decoded
+        }
+
+        // Load selected theme
+        if let themeName = UserDefaults.standard.string(forKey: "selected_theme"),
+           let theme = CodecTheme(rawValue: themeName) {
+            currentTheme = theme
+        }
+    }
 }
 
-enum CodecTheme: CaseIterable {
-    case tactical
-    case night
-    case infrared
-    case custom
+enum CodecTheme: String, CaseIterable {
+    case tactical = "tactical"
+    case night = "night"
+    case infrared = "infrared"
+    case custom = "custom"
 
     static var allCases: [CodecTheme] {
         [.tactical, .night, .infrared, .custom]
@@ -188,7 +219,7 @@ struct ThemePalette {
     }
 }
 
-struct CustomThemePalette: Equatable {
+struct CustomThemePalette: Equatable, Codable {
     var primaryHex: String
     var secondaryHex: String
     var accentHex: String

@@ -10,7 +10,7 @@ class SharedDataManager: ObservableObject {
     let alertsViewModel = AlertsViewModel()
     let intelViewModel = IntelViewModel()
     let mapViewModel = MapViewModel()
-    let audioViewModel = AudioViewModel()
+    @Published var audioViewModel = AudioViewModel()
 
     // App Coordinator for navigation
     var appCoordinator: AppCoordinator?
@@ -25,6 +25,7 @@ class SharedDataManager: ObservableObject {
     private init() {
         // Private initializer for singleton
         setupMissionStatsObservers()
+        setupAudioViewModelObserver()
     }
 
     private func setupMissionStatsObservers() {
@@ -39,6 +40,18 @@ class SharedDataManager: ObservableObject {
 
         // Initial stats calculation
         updateMissionStats()
+    }
+
+    private func setupAudioViewModelObserver() {
+        // Subscribe to audio view model changes to propagate them to UI
+        audioViewModel.objectWillChange
+            .sink { [weak self] _ in
+                print("📢 SharedDataManager: AudioViewModel changed, propagating to UI")
+                DispatchQueue.main.async {
+                    self?.objectWillChange.send()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func updateMissionStats() {

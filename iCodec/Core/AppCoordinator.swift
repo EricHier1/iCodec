@@ -33,7 +33,6 @@ class AppCoordinator: ObservableObject {
 enum AppModule: String, CaseIterable {
     case mission = "MISSION"
     case map = "MAP"
-    case compass = "COMPASS"
     case audio = "AUDIO"
     case intel = "INTEL"
     case alerts = "ALERTS"
@@ -41,7 +40,7 @@ enum AppModule: String, CaseIterable {
     case settings = "SETTINGS"
 
     static var defaultNavigationModules: [AppModule] {
-        [.mission, .map, .audio, .intel, .alerts, .camera, .compass]
+        [.mission, .map, .audio, .intel, .alerts, .camera]
     }
 
     static var navigationModules: [AppModule] {
@@ -65,7 +64,6 @@ enum AppModule: String, CaseIterable {
         switch self {
         case .mission: return "OBJ"
         case .map: return "TAC"
-        case .compass: return "NAV"
         case .audio: return "COM"
         case .intel: return "INT"
         case .alerts: return "ALR"

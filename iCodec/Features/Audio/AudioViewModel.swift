@@ -18,6 +18,8 @@ class AudioViewModel: NSObject, ObservableObject {
     @Published var audioLevel: Float = 0.0
     @Published var recordings: [VoiceRecording] = []
     @Published var hasRecordings = false
+    @Published var isPlayingRecording = false
+    @Published var currentPlayingRecording: VoiceRecording?
     @Published var customStations: [RadioStation] = []
     @Published var customStationName = ""
     @Published var customStationURL = ""
@@ -473,17 +475,56 @@ class AudioViewModel: NSObject, ObservableObject {
     }
 
     func playRecording(_ recording: VoiceRecording) {
+        // Prevent multiple rapid calls
+        if isPlayingRecording && currentPlayingRecording?.id == recording.id {
+            print("🎵 Already playing this recording, ignoring")
+            return
+        }
+
         do {
+            print("🎵 Starting playback for recording: \(recording.id)")
+
+            // Stop any currently playing recording first
+            audioPlayer?.stop()
+            audioPlayer = nil
+            isPlayingRecording = false
+            currentPlayingRecording = nil
+
             audioPlayer = try AVAudioPlayer(contentsOf: recording.url)
+            audioPlayer?.delegate = self
             audioPlayer?.volume = Float(volume)
-            audioPlayer?.play()
+
+            let playResult = audioPlayer?.play() ?? false
+            print("🎵 AudioPlayer play() returned: \(playResult)")
+
+            // Update state immediately on main thread (since we're already @MainActor)
+            isPlayingRecording = true
+            currentPlayingRecording = recording
+            print("🎵 Set isPlayingRecording = \(isPlayingRecording), currentPlayingRecording = \(currentPlayingRecording?.id ?? UUID())")
         } catch {
+            print("🎵 Error playing recording: \(error)")
             handleError(error)
         }
     }
 
+    func stopRecordingPlayback() {
+        print("🎵 Stopping recording playback")
+        audioPlayer?.stop()
+        audioPlayer = nil
+
+        // Update state immediately (since we're already @MainActor)
+        isPlayingRecording = false
+        currentPlayingRecording = nil
+        print("🎵 Set isPlayingRecording = \(isPlayingRecording), currentPlayingRecording = nil")
+    }
+
     func deleteRecording(_ recording: VoiceRecording) {
         do {
+            // Stop playback if this recording is currently playing
+            if currentPlayingRecording?.id == recording.id {
+                stopRecordingPlayback()
+            }
+
             try FileManager.default.removeItem(at: recording.url)
             loadRecordings()
         } catch {
@@ -497,13 +538,21 @@ class AudioViewModel: NSObject, ObservableObject {
         do {
             let files = try FileManager.default.contentsOfDirectory(at: documentsPath, includingPropertiesForKeys: [.creationDateKey], options: [])
 
+            // Load saved metadata
+            let savedRecordings = loadRecordingMetadata()
+
             recordings = files
                 .filter { $0.pathExtension == "m4a" && $0.lastPathComponent.hasPrefix("recording_") }
                 .compactMap { url -> VoiceRecording? in
                     guard let creationDate = try? url.resourceValues(forKeys: [.creationDateKey]).creationDate else {
                         return nil
                     }
-                    return VoiceRecording(id: UUID(), url: url, date: creationDate)
+
+                    // Check if we have saved metadata for this recording
+                    let existingRecording = savedRecordings.first { $0.url.lastPathComponent == url.lastPathComponent }
+                    let description = existingRecording?.description ?? ""
+
+                    return VoiceRecording(id: existingRecording?.id ?? UUID(), url: url, date: creationDate, description: description)
                 }
                 .sorted { $0.date > $1.date }
 
@@ -513,6 +562,27 @@ class AudioViewModel: NSObject, ObservableObject {
             recordings = []
             hasRecordings = false
         }
+    }
+
+    func updateRecordingDescription(_ recording: VoiceRecording, description: String) {
+        if let index = recordings.firstIndex(where: { $0.id == recording.id }) {
+            recordings[index].description = description
+            saveRecordingMetadata()
+        }
+    }
+
+    private func saveRecordingMetadata() {
+        if let encoded = try? JSONEncoder().encode(recordings) {
+            UserDefaults.standard.set(encoded, forKey: "voice_recording_metadata")
+        }
+    }
+
+    private func loadRecordingMetadata() -> [VoiceRecording] {
+        if let data = UserDefaults.standard.data(forKey: "voice_recording_metadata"),
+           let decoded = try? JSONDecoder().decode([VoiceRecording].self, from: data) {
+            return decoded
+        }
+        return []
     }
 
     func addCustomStation() {
@@ -635,8 +705,7 @@ class AudioViewModel: NSObject, ObservableObject {
         }
 
         // Stop any voice playback
-        audioPlayer?.stop()
-        audioPlayer = nil
+        stopRecordingPlayback()
     }
 
 }
@@ -653,6 +722,15 @@ extension AudioViewModel: AVAudioRecorderDelegate {
     }
 }
 
+extension AudioViewModel: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            isPlayingRecording = false
+            currentPlayingRecording = nil
+        }
+    }
+}
+
 struct RadioStation: Identifiable, Codable {
     let id: UUID
     let name: String
@@ -660,10 +738,11 @@ struct RadioStation: Identifiable, Codable {
     let frequency: String
 }
 
-struct VoiceRecording: Identifiable {
+struct VoiceRecording: Identifiable, Codable {
     let id: UUID
     let url: URL
     let date: Date
+    var description: String
 
     var duration: String {
         do {
@@ -681,5 +760,9 @@ struct VoiceRecording: Identifiable {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM dd, HH:mm"
         return formatter.string(from: date)
+    }
+
+    var displayName: String {
+        return description.isEmpty ? "REC_\(String(format: "%.0f", date.timeIntervalSince1970))" : description
     }
 }

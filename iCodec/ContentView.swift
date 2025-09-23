@@ -262,12 +262,6 @@ struct ContentView: View {
                 MissionView()
             case .map:
                 MapView()
-            case .compass:
-                Text("COMPASS MODULE")
-                    .font(.system(size: 16, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(themeManager.backgroundColor)
             case .audio:
                 AudioView()
             case .intel:
