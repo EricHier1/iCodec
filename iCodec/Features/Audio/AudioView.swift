@@ -35,6 +35,9 @@ struct AudioView: View {
                     // Radio Section
                     radioSection
 
+                    // Custom Station Section
+                    customStationSection
+
                     // Voice Recording Section
                     voiceRecordingSection
 
@@ -47,6 +50,12 @@ struct AudioView: View {
         .background(themeManager.backgroundColor)
         .onAppear {
             viewModel.requestMicrophonePermission()
+        }
+        .onDisappear {
+            // Don't stop radio when switching tabs, but ensure clean state
+            if viewModel.isRecording {
+                viewModel.toggleRecording()
+            }
         }
     }
 
@@ -230,6 +239,102 @@ struct AudioView: View {
         }
     }
 
+    private var customStationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CUSTOM STATIONS")
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundColor(themeManager.accentColor)
+                .fontWeight(.bold)
+
+            HUDPanel(title: "Add Station") {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("STATION NAME")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+
+                            TextField("", text: $viewModel.customStationName)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(themeManager.primaryColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(themeManager.surfaceColor.opacity(0.3))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+                                )
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("FREQUENCY")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+
+                            TextField("", text: $viewModel.customStationFrequency)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(themeManager.primaryColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(themeManager.surfaceColor.opacity(0.3))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+                                )
+                                .frame(width: 80)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("STREAM URL")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+
+                        TextField("https://example.com/stream", text: $viewModel.customStationURL)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(themeManager.primaryColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(themeManager.surfaceColor.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+                            )
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                    }
+
+                    HStack {
+                        CodecButton(
+                            title: "ADD STATION",
+                            action: {
+                                TacticalSoundPlayer.playAction()
+                                viewModel.addCustomStation()
+                            },
+                            style: .primary,
+                            size: .medium
+                        )
+                        .disabled(viewModel.customStationName.isEmpty || viewModel.customStationURL.isEmpty)
+
+                        Spacer()
+                    }
+                }
+            }
+
+            // Custom stations list
+            if !viewModel.customStations.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(viewModel.customStations) { station in
+                        CustomStationRow(station: station, viewModel: viewModel)
+                    }
+                }
+            }
+        }
+    }
+
     private var savedRecordingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -257,6 +362,58 @@ struct AudioView: View {
                 VStack(spacing: 8) {
                     ForEach(viewModel.recordings) { recording in
                         RecordingRow(recording: recording, viewModel: viewModel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct CustomStationRow: View {
+    let station: RadioStation
+    let viewModel: AudioViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    var body: some View {
+        HUDPanel(title: "Custom Station") {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(station.name)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Text("FM \(station.frequency)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(themeManager.textColor.opacity(0.7))
+                }
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    CodecButton(
+                        title: "PLAY",
+                        action: {
+                            TacticalSoundPlayer.playAction()
+                            viewModel.playCustomStation(station)
+                        },
+                        style: .secondary,
+                        size: .small
+                    )
+
+                    Button(action: {
+                        TacticalSoundPlayer.playNavigation()
+                        viewModel.deleteCustomStation(station)
+                    }) {
+                        Text("DEL")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.errorColor)
+                            .frame(width: 30, height: 24)
+                            .background(themeManager.errorColor.opacity(0.2))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .stroke(themeManager.errorColor, lineWidth: 1)
+                            )
                     }
                 }
             }

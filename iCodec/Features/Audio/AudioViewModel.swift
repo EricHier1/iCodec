@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 import Combine
+import Foundation
 
 @MainActor
 class AudioViewModel: NSObject, ObservableObject {
@@ -17,6 +18,10 @@ class AudioViewModel: NSObject, ObservableObject {
     @Published var audioLevel: Float = 0.0
     @Published var recordings: [VoiceRecording] = []
     @Published var hasRecordings = false
+    @Published var customStations: [RadioStation] = []
+    @Published var customStationName = ""
+    @Published var customStationURL = ""
+    @Published var customStationFrequency = ""
 
     private var audioPlayer: AVAudioPlayer?
     private var radioPlayer: AVPlayer?
@@ -29,10 +34,14 @@ class AudioViewModel: NSObject, ObservableObject {
     private var playerObserver: Any?
     private var cancellables = Set<AnyCancellable>()
 
-    private let radioStations: [RadioStation] = [
+    private let builtInStations: [RadioStation] = [
         RadioStation(id: UUID(), name: "80S HITS", url: "https://streams.80s80s.de/web/mp3-192/streams.80s80s.de/", frequency: "80.5"),
         RadioStation(id: UUID(), name: "FLASHBACK", url: "https://streams.fluxfm.de/80er/mp3-320/audio/", frequency: "81.2")
     ]
+
+    private var radioStations: [RadioStation] {
+        return builtInStations + customStations
+    }
 
     private var currentStationIndex = 0
 
@@ -40,15 +49,21 @@ class AudioViewModel: NSObject, ObservableObject {
         super.init()
         setupAudio()
         loadRecordings()
+        loadCustomStations()
         currentStation = radioStations.first
         setupVolumeObserver()
     }
 
     deinit {
-        // Clean up resources synchronously in deinit
-        radioPlayer?.pause()
-        radioPlayer = nil
+        print("🔊 AudioViewModel deinitializing")
+
+        // Clean up observer
         playerObserver = nil
+
+        // Clean up audio resources synchronously in deinit
+        radioPlayer?.pause()
+        radioPlayer?.replaceCurrentItem(with: nil)
+        radioPlayer = nil
 
         audioRecorder?.stop()
         audioRecorder = nil
@@ -58,6 +73,12 @@ class AudioViewModel: NSObject, ObservableObject {
 
         audioLevelTimer?.invalidate()
         audioLevelTimer = nil
+
+        // Cancel all Combine subscriptions
+        cancellables.removeAll()
+
+        // Remove notification observers
+        NotificationCenter.default.removeObserver(self)
     }
 
     private func setupVolumeObserver() {
@@ -79,14 +100,81 @@ class AudioViewModel: NSObject, ObservableObject {
 
             // Use playback category for better streaming performance when not recording
             if !isRecording {
-                try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowAirPlay])
+                try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowAirPlay, .mixWithOthers])
             } else {
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP, .allowAirPlay])
             }
 
             try session.setActive(true)
+
+            // Add notification observers for audio session interruptions
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleAudioSessionInterruption),
+                name: AVAudioSession.interruptionNotification,
+                object: session
+            )
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleAudioSessionRouteChange),
+                name: AVAudioSession.routeChangeNotification,
+                object: session
+            )
+
         } catch {
             handleError(error)
+        }
+    }
+
+    @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+
+        print("🔊 Audio session interruption: \(type)")
+
+        switch type {
+        case .began:
+            // Audio session was interrupted (phone call, etc.)
+            if isPlaying {
+                radioPlayer?.pause()
+            }
+        case .ended:
+            // Audio session interruption ended
+            if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                if options.contains(.shouldResume) && isPlaying {
+                    // Resume playback if it was playing before interruption
+                    radioPlayer?.play()
+                }
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    @objc private func handleAudioSessionRouteChange(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+
+        print("🔊 Audio session route change: \(reason)")
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            // Headphones unplugged, pause playback
+            if isPlaying {
+                Task { @MainActor in
+                    self.stopRadio()
+                }
+            }
+        default:
+            break
         }
     }
 
@@ -112,11 +200,13 @@ class AudioViewModel: NSObject, ObservableObject {
 
         // Observe player status
         playerObserver = radioPlayer?.observe(\.status, options: [.new]) { [weak self] player, _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 switch player.status {
                 case .readyToPlay:
                     self?.isPlaying = true
-                    self?.currentlyPlaying = "STREAMING: \(station.name)"
+                    if let station = self?.currentStation {
+                        self?.currentlyPlaying = "STREAMING: \(station.name)"
+                    }
                     self?.signalStrength = 4
                     player.play()
                 case .failed:
@@ -145,9 +235,19 @@ class AudioViewModel: NSObject, ObservableObject {
     }
 
     private func handleRadioError(_ error: Error?) {
+        print("🔊 Handling radio error")
+
+        // Clean up the current player first
+        playerObserver = nil
+
+        radioPlayer?.pause()
+        radioPlayer?.replaceCurrentItem(with: nil)
+        radioPlayer = nil
+
         isPlaying = false
         currentlyPlaying = "SIGNAL LOST"
         signalStrength = 0
+
         if let error = error {
             print("Radio stream error: \(error.localizedDescription)")
         }
@@ -162,18 +262,21 @@ class AudioViewModel: NSObject, ObservableObject {
     }
 
     private func stopRadio() {
-        radioPlayer?.pause()
-        radioPlayer = nil
+        print("🔊 Stopping radio playback")
 
-        // Remove observer
-        if playerObserver != nil {
-            // Note: KVO observer will be automatically removed when radioPlayer is deallocated
-            playerObserver = nil
-        }
+        // Remove observer first to prevent any callbacks during cleanup
+        playerObserver = nil
+
+        // Stop and clean up player
+        radioPlayer?.pause()
+        radioPlayer?.replaceCurrentItem(with: nil)
+        radioPlayer = nil
 
         isPlaying = false
         currentlyPlaying = "STANDBY"
         signalStrength = 0
+
+        print("🔊 Radio stopped successfully")
     }
 
     private func simulateTrackChange() {
@@ -406,6 +509,98 @@ class AudioViewModel: NSObject, ObservableObject {
             hasRecordings = false
         }
     }
+
+    func addCustomStation() {
+        guard !customStationName.isEmpty,
+              !customStationURL.isEmpty,
+              let _ = URL(string: customStationURL) else { return }
+
+        let newStation = RadioStation(
+            id: UUID(),
+            name: customStationName.uppercased(),
+            url: customStationURL,
+            frequency: customStationFrequency.isEmpty ? "00.0" : customStationFrequency
+        )
+
+        customStations.append(newStation)
+        saveCustomStations()
+
+        // Clear the input fields
+        customStationName = ""
+        customStationURL = ""
+        customStationFrequency = ""
+    }
+
+    func deleteCustomStation(_ station: RadioStation) {
+        // Stop radio if we're deleting the currently playing station
+        if currentStation?.id == station.id {
+            stopRadio()
+        }
+
+        customStations.removeAll { $0.id == station.id }
+        saveCustomStations()
+
+        // Update current station if needed
+        if currentStation?.id == station.id {
+            currentStationIndex = 0
+            currentStation = radioStations.first
+        } else {
+            // Adjust index if needed
+            updateCurrentStationIndex()
+        }
+    }
+
+    func playCustomStation(_ station: RadioStation) {
+        // Find the station in the combined list and set it as current
+        if let index = radioStations.firstIndex(where: { $0.id == station.id }) {
+            let wasPlaying = isPlaying
+            stopRadio()
+            currentStationIndex = index
+            currentStation = station
+            if wasPlaying {
+                playRadio()
+            }
+        }
+    }
+
+    private func updateCurrentStationIndex() {
+        if let current = currentStation,
+           let index = radioStations.firstIndex(where: { $0.id == current.id }) {
+            currentStationIndex = index
+        }
+    }
+
+    private func saveCustomStations() {
+        if let encoded = try? JSONEncoder().encode(customStations) {
+            UserDefaults.standard.set(encoded, forKey: "custom_radio_stations")
+        }
+    }
+
+    private func loadCustomStations() {
+        if let data = UserDefaults.standard.data(forKey: "custom_radio_stations"),
+           let decoded = try? JSONDecoder().decode([RadioStation].self, from: data) {
+            customStations = decoded
+        }
+    }
+
+    func forceStopAllPlayback() {
+        print("🔊 Force stopping all audio playback")
+
+        // Stop radio
+        if isPlaying {
+            stopRadio()
+        }
+
+        // Stop recording
+        if isRecording {
+            stopRecording()
+        }
+
+        // Stop any voice playback
+        audioPlayer?.stop()
+        audioPlayer = nil
+    }
+
 }
 
 extension AudioViewModel: AVAudioRecorderDelegate {
@@ -420,7 +615,7 @@ extension AudioViewModel: AVAudioRecorderDelegate {
     }
 }
 
-struct RadioStation: Identifiable {
+struct RadioStation: Identifiable, Codable {
     let id: UUID
     let name: String
     let url: String
