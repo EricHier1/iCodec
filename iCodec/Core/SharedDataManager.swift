@@ -10,6 +10,7 @@ class SharedDataManager: ObservableObject {
     let alertsViewModel = AlertsViewModel()
     let intelViewModel = IntelViewModel()
     let mapViewModel = MapViewModel()
+    let audioViewModel = AudioViewModel()
 
     // Mission Stats
     @Published var activeMissionCount: Int = 0

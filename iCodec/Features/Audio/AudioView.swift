@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct AudioView: View {
-    @StateObject private var viewModel = AudioViewModel()
+    @ObservedObject private var viewModel = SharedDataManager.shared.audioViewModel
     @EnvironmentObject private var themeManager: ThemeManager
 
     var body: some View {

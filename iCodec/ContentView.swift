@@ -10,11 +10,6 @@ struct ContentView: View {
     @State private var showBootScreen = true
     @State private var currentTime = Date()
     @State private var showMissionStatsDetail = false
-    @State private var autoScrollTimer: Timer?
-    @State private var scrollAction: ((AppModule) -> Void)?
-    @State private var lastUserInteraction = Date()
-    @State private var isUserActive = false
-    @State private var currentScrollIndex: Int = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -81,9 +76,6 @@ struct ContentView: View {
                     header
                     navigationMenu
                     contentArea
-                        .onTapGesture {
-                            onUserInteraction()
-                        }
                     Spacer()
                 }
                 .padding(.horizontal, horizontalPadding)
@@ -238,7 +230,6 @@ struct ContentView: View {
                             module: module,
                             isActive: coordinator.currentModule == module
                         ) {
-                            onUserInteraction()
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 coordinator.currentModule = module
                             }
@@ -252,18 +243,6 @@ struct ContentView: View {
             }
             .scrollTargetBehavior(.viewAligned)
             .scrollIndicators(.hidden)
-            .onAppear {
-                scrollAction = { module in
-                    scrollProxy.scrollTo(module, anchor: .center)
-                }
-                startAutoScroll()
-            }
-            .onTapGesture {
-                onUserInteraction()
-            }
-            .onDisappear {
-                stopAutoScroll()
-            }
         }
     }
 
@@ -296,44 +275,6 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.3), value: coordinator.currentModule)
     }
 
-    private func startAutoScroll() {
-        stopAutoScroll()
-
-        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { _ in
-            Task { @MainActor in
-                // Only scroll if user hasn't been active in the last 5 seconds
-                let timeSinceLastInteraction = Date().timeIntervalSince(lastUserInteraction)
-                guard timeSinceLastInteraction > 5.0 else { return }
-
-                let modules = AppModule.navigationModules
-                guard !modules.isEmpty else { return }
-
-                // Move to next module in circular sequence (always left)
-                currentScrollIndex = (currentScrollIndex + 1) % modules.count
-                let moduleToScrollTo = modules[currentScrollIndex]
-
-                // Consistent linear movement to the left
-                withAnimation(.linear(duration: 2.0)) {
-                    scrollAction?(moduleToScrollTo)
-                }
-            }
-        }
-    }
-
-    private func stopAutoScroll() {
-        autoScrollTimer?.invalidate()
-        autoScrollTimer = nil
-    }
-
-    private func onUserInteraction() {
-        lastUserInteraction = Date()
-        isUserActive = true
-
-        // Reset user activity after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) {
-            isUserActive = false
-        }
-    }
 }
 
 struct NavigationItem: View {
