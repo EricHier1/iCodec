@@ -440,10 +440,15 @@ class AlertsViewModel: BaseViewModel {
     }
 
     func scheduleAlert(title: String, message: String, time: Date, repeatOption: RepeatOption, priority: AlertPriority = .medium) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedTitle.isEmpty else { return }
+
         let scheduledAlert = ScheduledAlert(
             id: UUID(),
-            title: title,
-            message: message,
+            title: trimmedTitle,
+            message: trimmedMessage.isEmpty ? nil : trimmedMessage,
             scheduledTime: time,
             repeatOption: repeatOption,
             priority: priority
@@ -454,13 +459,15 @@ class AlertsViewModel: BaseViewModel {
 
         // Schedule actual notification
         scheduleNotification(for: scheduledAlert)
+
+        print("📅 Scheduled alert: \(trimmedTitle) for \(time)")
     }
 
     private func scheduleNotification(for alert: ScheduledAlert) {
         let content = UNMutableNotificationContent()
         content.title = "◄◄ CODEC INCOMING ►►"
         content.body = "\(alert.title): \(alert.message ?? "")"
-        content.sound = UNNotificationSound(named: UNNotificationSoundName("codec_buzz.wav"))
+        content.sound = UNNotificationSound.default
 
         guard let trigger = makeTrigger(for: alert) else {
             systemStatus = .error

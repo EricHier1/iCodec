@@ -217,21 +217,27 @@ extension CodecAlertManager: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
 
         Task { @MainActor in
+            print("🔔 Notification received while app active: \(notification.request.identifier)")
+
             // Handle scheduled alert completion - add to history
             handleScheduledAlertCompletion(notificationId: notification.request.identifier)
 
             // Show codec alert if app is active
             if let scheduledAlert = SharedDataManager.shared.alertsViewModel.scheduledAlerts.first(where: { $0.id.uuidString == notification.request.identifier }) {
+                print("🚨 Triggering codec alert for scheduled alert: \(scheduledAlert.title)")
                 triggerCodecAlert(
                     title: scheduledAlert.title,
                     message: scheduledAlert.message ?? "",
                     priority: scheduledAlert.priority.toCodecPriority()
                 )
+                // Don't show the standard notification banner when we show codec alert
+                completionHandler([.badge])
+            } else {
+                print("⚠️ Could not find scheduled alert for notification: \(notification.request.identifier)")
+                // Show standard notification if we can't find the scheduled alert
+                completionHandler([.banner, .sound, .badge])
             }
         }
-
-        // Show notification even when app is active
-        completionHandler([.banner, .sound, .badge])
     }
 
     // Handle notification tap

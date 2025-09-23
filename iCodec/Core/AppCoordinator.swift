@@ -33,23 +33,25 @@ class AppCoordinator: ObservableObject {
 enum AppModule: String, CaseIterable {
     case mission = "MISSION"
     case map = "MAP"
+    case compass = "COMPASS"
+    case audio = "AUDIO"
     case intel = "INTEL"
     case alerts = "ALERTS"
-    case audio = "AUDIO"
     case camera = "CAMERA"
     case settings = "SETTINGS"
 
     static var navigationModules: [AppModule] {
-        [.mission, .map, .intel, .alerts, .audio, .camera]
+        [.mission, .map, .audio, .intel, .alerts, .camera, .compass]
     }
 
     var glyph: String {
         switch self {
         case .mission: return "OBJ"
         case .map: return "TAC"
+        case .compass: return "NAV"
+        case .audio: return "COM"
         case .intel: return "INT"
         case .alerts: return "ALR"
-        case .audio: return "COM"
         case .camera: return "CAM"
         case .settings: return "SET"
         }

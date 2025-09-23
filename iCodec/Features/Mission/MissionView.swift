@@ -43,6 +43,11 @@ struct MissionView: View {
         .sheet(isPresented: $viewModel.showEditMissionDialog) {
             EditMissionSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showMissionDetailDialog) {
+            if let mission = viewModel.missionToView {
+                MissionDetailView(mission: mission, viewModel: viewModel)
+            }
+        }
     }
 
     private var currentMissionSection: some View {
@@ -54,7 +59,14 @@ struct MissionView: View {
 
             if let currentMission = viewModel.currentMission {
                 MissionCard(mission: currentMission, isActive: true)
+                    .onTapGesture {
+                        viewModel.viewMissionDetail(currentMission)
+                    }
                     .contextMenu {
+                        Button("View Details", systemImage: "eye") {
+                            viewModel.viewMissionDetail(currentMission)
+                        }
+
                         Button("Edit Mission", systemImage: "pencil") {
                             viewModel.editMission(currentMission)
                         }
@@ -102,12 +114,18 @@ struct MissionView: View {
                 ForEach(viewModel.missions) { mission in
                     MissionCard(mission: mission, isActive: false)
                         .onTapGesture {
-                            viewModel.setCurrentMission(mission)
+                            viewModel.viewMissionDetail(mission)
                         }
                         .onLongPressGesture {
-                            viewModel.editMission(mission)
+                            viewModel.setCurrentMission(mission)
                         }
                         .contextMenu {
+                            Button("View Details", systemImage: "eye") {
+                                viewModel.viewMissionDetail(mission)
+                            }
+                            Button("Set as Active", systemImage: "play.circle") {
+                                viewModel.setCurrentMission(mission)
+                            }
                             Button("Edit Mission", systemImage: "pencil") {
                                 viewModel.editMission(mission)
                             }
@@ -138,7 +156,13 @@ struct MissionView: View {
             VStack(spacing: 8) {
                 ForEach(viewModel.completedMissions) { mission in
                     MissionCard(mission: mission, isActive: false, isCompleted: true)
+                        .onTapGesture {
+                            viewModel.viewMissionDetail(mission)
+                        }
                         .contextMenu {
+                            Button("View Details", systemImage: "eye") {
+                                viewModel.viewMissionDetail(mission)
+                            }
                             Button("Reactivate Mission", systemImage: "arrow.clockwise") {
                                 viewModel.reactivateMission(mission)
                             }
@@ -330,67 +354,22 @@ struct NewMissionSheet: View {
     @State private var progress: Double = 0
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("NEW MISSION")
-                    .font(.system(size: 18, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
-                    .fontWeight(.bold)
-
-                VStack(spacing: 16) {
-                    TextField("Mission title...", text: $title)
-                        .textFieldStyle(CodecTextFieldStyle())
-
-                    TextField("Mission objectives...", text: $description, axis: .vertical)
-                        .textFieldStyle(CodecTextFieldStyle())
-                        .lineLimit(3...6)
-
-                    if let error = viewModel.missionError {
-                        HStack {
-                            Text(error)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.red)
-                                .multilineTextAlignment(.leading)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 4)
-                    }
-
-                    HStack {
-                        Text("Priority:")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
-
-                        Picker("Priority", selection: $priority) {
-                            ForEach(Priority.allCases, id: \.self) { priority in
-                                Text(priority.rawValue.uppercased())
-                                    .tag(priority)
-                            }
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                    }
-
-                    HStack {
-                        Text("Progress:")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
-
-                        Slider(value: $progress, in: 0...100, step: 5)
-                            .accentColor(themeManager.primaryColor)
-
-                        Text("\(Int(progress))%")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.primaryColor)
-                            .frame(width: 40)
-                    }
-                }
-
-                Spacer()
-
-                HStack(spacing: 16) {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Compact header
+                HStack {
                     CodecButton(title: "CANCEL", action: {
                         dismiss()
-                    }, style: .secondary, size: .fullWidth)
+                    }, style: .secondary, size: .small)
+
+                    Spacer()
+
+                    Text("NEW MISSION")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
 
                     CodecButton(title: "CREATE", action: {
                         if viewModel.createMission(
@@ -401,11 +380,306 @@ struct NewMissionSheet: View {
                         ) {
                             dismiss()
                         }
-                    }, style: .primary, size: .fullWidth)
+                    }, style: .primary, size: .small)
+                }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Full screen content area
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Mission title
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MISSION TITLE")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            TextField("Enter mission title...", text: $title)
+                                .textFieldStyle(CodecTextFieldStyle())
+                        }
+
+                        // Priority and progress
+                        HStack(spacing: 16) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("PRIORITY LEVEL")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                                    .fontWeight(.bold)
+
+                                Picker("Priority", selection: $priority) {
+                                    ForEach(Priority.allCases, id: \.self) { priority in
+                                        Text(priority.rawValue.uppercased())
+                                            .tag(priority)
+                                    }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("PROGRESS: \(Int(progress))%")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                                    .fontWeight(.bold)
+
+                                Slider(value: $progress, in: 0...100, step: 5)
+                                    .accentColor(themeManager.primaryColor)
+                            }
+                        }
+
+                        // Error display
+                        if let error = viewModel.missionError {
+                            HStack {
+                                Text(error)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(.red)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 4)
+                        }
+
+                        // Main mission description area (takes most of the screen)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MISSION OBJECTIVES & DETAILS")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            TextField("Enter detailed mission objectives...\n\nInclude:\n• Primary objectives\n• Secondary objectives\n• Rules of engagement\n• Success criteria\n• Risk assessment\n• Required resources\n• Timeline and milestones", text: $description, axis: .vertical)
+                                .textFieldStyle(CodecTextFieldStyle())
+                                .lineLimit(15...50)
+                                .frame(minHeight: geometry.size.height * 0.55)
+                        }
+
+                        Spacer(minLength: 20)
+                    }
+                    .padding(16)
                 }
             }
-            .padding(20)
             .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
+        }
+    }
+}
+
+struct MissionDetailView: View {
+    @ObservedObject var mission: Mission
+    let viewModel: MissionViewModel
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Compact header
+                HStack {
+                    CodecButton(title: "CLOSE", action: {
+                        dismiss()
+                    }, style: .secondary, size: .small)
+
+                    Spacer()
+
+                    Text("MISSION DETAILS")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    CodecButton(title: "EDIT", action: {
+                        dismiss()
+                        viewModel.editMission(mission)
+                    }, style: .primary, size: .small)
+                }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Full screen content area
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Mission title and status
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(mission.name ?? "Untitled Mission")
+                                    .font(.system(size: 20, design: .monospaced))
+                                    .foregroundColor(themeManager.primaryColor)
+                                    .fontWeight(.bold)
+
+                                Spacer()
+
+                                priorityIndicator
+                            }
+
+                            HStack {
+                                statusIndicator
+                                Spacer()
+                                if let timestamp = mission.timestamp {
+                                    Text("CREATED: \(DateFormatter.missionDateFormatter.string(from: timestamp))")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(themeManager.textColor.opacity(0.7))
+                                }
+                            }
+                        }
+
+                        // Progress section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("MISSION PROGRESS")
+                                .font(.system(size: 14, design: .monospaced))
+                                .foregroundColor(themeManager.accentColor)
+                                .fontWeight(.bold)
+
+                            VStack(spacing: 8) {
+                                HStack {
+                                    Text("\(Int(mission.progress))% COMPLETE")
+                                        .font(.system(size: 16, design: .monospaced))
+                                        .foregroundColor(themeManager.primaryColor)
+                                        .fontWeight(.bold)
+                                    Spacer()
+                                }
+
+                                GeometryReader { progressGeometry in
+                                    let fraction = max(0, min(1, mission.progress / 100))
+                                    let width = max(CGFloat(fraction) * progressGeometry.size.width, 2)
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(themeManager.surfaceColor)
+
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(progressColor)
+                                            .frame(width: width)
+                                    }
+                                }
+                                .frame(height: 8)
+                            }
+                        }
+
+                        // Mission description
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("MISSION OBJECTIVES & DETAILS")
+                                .font(.system(size: 14, design: .monospaced))
+                                .foregroundColor(themeManager.accentColor)
+                                .fontWeight(.bold)
+
+                            if let description = mission.missionDescription, !description.isEmpty {
+                                Text(description)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16)
+                                    .background(themeManager.surfaceColor.opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1)
+                                    )
+                                    .cornerRadius(8)
+                            } else {
+                                Text("No mission description provided")
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.6))
+                                    .italic()
+                            }
+                        }
+
+                        // Action buttons (if not completed)
+                        if mission.status != "completed" {
+                            VStack(spacing: 12) {
+                                Text("MISSION ACTIONS")
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(themeManager.accentColor)
+                                    .fontWeight(.bold)
+
+                                VStack(spacing: 8) {
+                                    if viewModel.currentMission?.objectID != mission.objectID {
+                                        CodecButton(title: "SET AS ACTIVE MISSION", action: {
+                                            viewModel.setCurrentMission(mission)
+                                        }, style: .primary, size: .fullWidth)
+                                    }
+
+                                    HStack(spacing: 12) {
+                                        CodecButton(title: "EDIT MISSION", action: {
+                                            dismiss()
+                                            viewModel.editMission(mission)
+                                        }, style: .secondary, size: .fullWidth)
+
+                                        if mission.progress < 100 {
+                                            CodecButton(title: "MARK COMPLETE", action: {
+                                                viewModel.completeMission(mission)
+                                                dismiss()
+                                            }, style: .primary, size: .fullWidth)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(minLength: 20)
+                    }
+                    .padding(16)
+                }
+            }
+            .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
+        }
+    }
+
+    private var priorityIndicator: some View {
+        let priority = Priority(rawValue: mission.priority ?? "medium") ?? .medium
+        return Text(priority.rawValue.uppercased())
+            .font(.system(size: 10, design: .monospaced))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(priority.color.opacity(0.2))
+            .foregroundColor(priority.color)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(priority.color, lineWidth: 1)
+            )
+            .cornerRadius(6)
+    }
+
+    private var statusIndicator: some View {
+        let status = mission.status ?? "pending"
+        let statusColor = statusColor(for: status)
+        return Text(status.uppercased())
+            .font(.system(size: 10, design: .monospaced))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(statusColor.opacity(0.2))
+            .foregroundColor(statusColor)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(statusColor, lineWidth: 1)
+            )
+            .cornerRadius(6)
+    }
+
+    private var progressColor: Color {
+        let progress = mission.progress
+        if progress < 25 { return themeManager.errorColor }
+        else if progress < 75 { return themeManager.warningColor }
+        else { return themeManager.successColor }
+    }
+
+    private func statusColor(for status: String) -> Color {
+        switch status {
+        case "active": return themeManager.accentColor
+        case "completed": return themeManager.successColor
+        case "in_progress": return themeManager.warningColor
+        default: return themeManager.textColor.opacity(0.7)
         }
     }
 }
@@ -421,56 +695,22 @@ struct EditMissionSheet: View {
     @State private var progress: Double = 0
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("EDIT MISSION")
-                    .font(.system(size: 18, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
-                    .fontWeight(.bold)
-
-                VStack(spacing: 16) {
-                    TextField("Mission title...", text: $title)
-                        .textFieldStyle(CodecTextFieldStyle())
-
-                    TextField("Mission objectives...", text: $description, axis: .vertical)
-                        .textFieldStyle(CodecTextFieldStyle())
-                        .lineLimit(3...6)
-
-                    HStack {
-                        Text("Priority:")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
-
-                        Picker("Priority", selection: $priority) {
-                            ForEach(Priority.allCases, id: \.self) { priority in
-                                Text(priority.rawValue.uppercased())
-                                    .tag(priority)
-                            }
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                    }
-
-                    HStack {
-                        Text("Progress:")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
-
-                        Slider(value: $progress, in: 0...100, step: 5)
-                            .accentColor(themeManager.primaryColor)
-
-                        Text("\(Int(progress))%")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.primaryColor)
-                            .frame(width: 40)
-                    }
-                }
-
-                Spacer()
-
-                HStack(spacing: 16) {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Compact header
+                HStack {
                     CodecButton(title: "CANCEL", action: {
                         dismiss()
-                    }, style: .secondary, size: .fullWidth)
+                    }, style: .secondary, size: .small)
+
+                    Spacer()
+
+                    Text("EDIT MISSION")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
 
                     CodecButton(title: "UPDATE", action: {
                         if let mission = viewModel.missionToEdit {
@@ -483,11 +723,79 @@ struct EditMissionSheet: View {
                             )
                         }
                         dismiss()
-                    }, style: .primary, size: .fullWidth)
+                    }, style: .primary, size: .small)
+                }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Full screen content area
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Mission title
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MISSION TITLE")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            TextField("Enter mission title...", text: $title)
+                                .textFieldStyle(CodecTextFieldStyle())
+                        }
+
+                        // Priority and progress
+                        HStack(spacing: 16) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("PRIORITY LEVEL")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                                    .fontWeight(.bold)
+
+                                Picker("Priority", selection: $priority) {
+                                    ForEach(Priority.allCases, id: \.self) { priority in
+                                        Text(priority.rawValue.uppercased())
+                                            .tag(priority)
+                                    }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("PROGRESS: \(Int(progress))%")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(themeManager.textColor.opacity(0.7))
+                                    .fontWeight(.bold)
+
+                                Slider(value: $progress, in: 0...100, step: 5)
+                                    .accentColor(themeManager.primaryColor)
+                            }
+                        }
+
+                        // Main mission description area (takes most of the screen)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MISSION OBJECTIVES & DETAILS")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            TextField("Enter detailed mission objectives...\n\nInclude:\n• Primary objectives\n• Secondary objectives\n• Rules of engagement\n• Success criteria\n• Risk assessment\n• Required resources\n• Timeline and milestones", text: $description, axis: .vertical)
+                                .textFieldStyle(CodecTextFieldStyle())
+                                .lineLimit(15...50)
+                                .frame(minHeight: geometry.size.height * 0.55)
+                        }
+
+                        Spacer(minLength: 20)
+                    }
+                    .padding(16)
                 }
             }
-            .padding(20)
             .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
         }
         .onAppear {
             if let mission = viewModel.missionToEdit {
@@ -524,7 +832,9 @@ class MissionViewModel: BaseViewModel {
     @Published var currentMission: Mission?
     @Published var showNewMissionDialog = false
     @Published var showEditMissionDialog = false
+    @Published var showMissionDetailDialog = false
     @Published var missionToEdit: Mission?
+    @Published var missionToView: Mission?
     @Published var missionError: String?
 
     private let persistenceController = PersistenceController.shared
@@ -644,6 +954,11 @@ class MissionViewModel: BaseViewModel {
         showEditMissionDialog = true
     }
 
+    func viewMissionDetail(_ mission: Mission) {
+        missionToView = mission
+        showMissionDetailDialog = true
+    }
+
     func updateMission(_ mission: Mission, title: String, description: String, priority: Priority, progress: Double) {
         let context = persistenceController.container.viewContext
 
@@ -749,4 +1064,12 @@ enum Priority: String, CaseIterable {
         case .critical: return .red
         }
     }
+}
+
+extension DateFormatter {
+    static let missionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM dd, yyyy HH:mm"
+        return formatter
+    }()
 }

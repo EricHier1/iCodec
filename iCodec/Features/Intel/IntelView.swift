@@ -148,25 +148,60 @@ struct NewIntelSheet: View {
     @State private var classification: Classification = .confidential
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("NEW INTEL ENTRY")
-                    .font(.system(size: 18, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
-                    .fontWeight(.bold)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Compact header
+                HStack {
+                    CodecButton(title: "CANCEL", action: {
+                        dismiss()
+                    }, style: .secondary, size: .small)
 
+                    Spacer()
+
+                    Text("NEW INTEL ENTRY")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    CodecButton(title: "SAVE", action: {
+                        viewModel.createIntelEntry(
+                            title: title,
+                            content: content,
+                            classification: classification
+                        )
+                        dismiss()
+                    }, style: .primary, size: .small)
+                }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Full screen content area
                 VStack(spacing: 16) {
-                    TextField("Entry title...", text: $title)
-                        .textFieldStyle(CodecTextFieldStyle())
+                    // Title input
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("REPORT TITLE")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .fontWeight(.bold)
 
-                    TextField("Intel details...", text: $content, axis: .vertical)
-                        .textFieldStyle(CodecTextFieldStyle())
-                        .lineLimit(6...12)
+                        TextField("Enter intel report title...", text: $title)
+                            .textFieldStyle(CodecTextFieldStyle())
+                    }
 
-                    HStack {
-                        Text("Classification:")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
+                    // Classification picker
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CLASSIFICATION LEVEL")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .fontWeight(.bold)
 
                         Picker("Classification", selection: $classification) {
                             ForEach(Classification.allCases, id: \.self) { level in
@@ -176,27 +211,26 @@ struct NewIntelSheet: View {
                         }
                         .pickerStyle(SegmentedPickerStyle())
                     }
+
+                    // Main intel content area (takes most of the screen)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("INTELLIGENCE REPORT")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .fontWeight(.bold)
+
+                        TextField("Enter detailed intelligence report...\n\nInclude all relevant information:\n• Personnel observations\n• Equipment details\n• Tactical assessments\n• Threat analysis\n• Recommendations", text: $content, axis: .vertical)
+                            .textFieldStyle(CodecTextFieldStyle())
+                            .lineLimit(15...50)
+                            .frame(minHeight: geometry.size.height * 0.6)
+                    }
+
+                    Spacer(minLength: 0)
                 }
-
-                Spacer()
-
-                HStack(spacing: 16) {
-                    CodecButton(title: "CANCEL", action: {
-                        dismiss()
-                    }, style: .secondary, size: .fullWidth)
-
-                    CodecButton(title: "SAVE", action: {
-                        viewModel.createIntelEntry(
-                            title: title,
-                            content: content,
-                            classification: classification
-                        )
-                        dismiss()
-                    }, style: .primary, size: .fullWidth)
-                }
+                .padding(16)
             }
-            .padding(20)
             .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
         }
     }
 }
@@ -275,42 +309,22 @@ struct EditIntelSheet: View {
     @State private var classification: Classification = .confidential
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("EDIT INTEL ENTRY")
-                    .font(.system(size: 18, design: .monospaced))
-                    .foregroundColor(themeManager.primaryColor)
-                    .fontWeight(.bold)
-
-                VStack(spacing: 16) {
-                    TextField("Entry title...", text: $title)
-                        .textFieldStyle(CodecTextFieldStyle())
-
-                    TextField("Intel details...", text: $content, axis: .vertical)
-                        .textFieldStyle(CodecTextFieldStyle())
-                        .lineLimit(6...12)
-
-                    HStack {
-                        Text("Classification:")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.textColor)
-
-                        Picker("Classification", selection: $classification) {
-                            ForEach(Classification.allCases, id: \.self) { level in
-                                Text(level.rawValue.uppercased())
-                                    .tag(level)
-                            }
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                    }
-                }
-
-                Spacer()
-
-                HStack(spacing: 16) {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Compact header
+                HStack {
                     CodecButton(title: "CANCEL", action: {
                         dismiss()
-                    }, style: .secondary, size: .fullWidth)
+                    }, style: .secondary, size: .small)
+
+                    Spacer()
+
+                    Text("EDIT INTEL ENTRY")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(themeManager.primaryColor)
+                        .fontWeight(.bold)
+
+                    Spacer()
 
                     CodecButton(title: "UPDATE", action: {
                         if let entry = viewModel.intelToEdit {
@@ -322,11 +336,65 @@ struct EditIntelSheet: View {
                             )
                         }
                         dismiss()
-                    }, style: .primary, size: .fullWidth)
+                    }, style: .primary, size: .small)
                 }
+                .padding(16)
+                .background(themeManager.surfaceColor.opacity(0.1))
+                .overlay(
+                    Rectangle()
+                        .fill(themeManager.primaryColor.opacity(0.3))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+
+                // Full screen content area
+                VStack(spacing: 16) {
+                    // Title input
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("REPORT TITLE")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .fontWeight(.bold)
+
+                        TextField("Enter intel report title...", text: $title)
+                            .textFieldStyle(CodecTextFieldStyle())
+                    }
+
+                    // Classification picker
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CLASSIFICATION LEVEL")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .fontWeight(.bold)
+
+                        Picker("Classification", selection: $classification) {
+                            ForEach(Classification.allCases, id: \.self) { level in
+                                Text(level.rawValue.uppercased())
+                                    .tag(level)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                    }
+
+                    // Main intel content area (takes most of the screen)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("INTELLIGENCE REPORT")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(themeManager.textColor.opacity(0.7))
+                            .fontWeight(.bold)
+
+                        TextField("Enter detailed intelligence report...\n\nInclude all relevant information:\n• Personnel observations\n• Equipment details\n• Tactical assessments\n• Threat analysis\n• Recommendations", text: $content, axis: .vertical)
+                            .textFieldStyle(CodecTextFieldStyle())
+                            .lineLimit(15...50)
+                            .frame(minHeight: geometry.size.height * 0.6)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
             }
-            .padding(20)
             .background(themeManager.backgroundColor)
+            .navigationBarHidden(true)
         }
         .onAppear {
             if let entry = viewModel.intelToEdit {

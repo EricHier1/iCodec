@@ -1,5 +1,7 @@
 import SwiftUI
 import CoreData
+import CoreLocation
+import CoreMotion
 
 struct ContentView: View {
     @StateObject private var coordinator = AppCoordinator()
@@ -8,6 +10,11 @@ struct ContentView: View {
     @State private var showBootScreen = true
     @State private var currentTime = Date()
     @State private var showMissionStatsDetail = false
+    @State private var autoScrollTimer: Timer?
+    @State private var scrollAction: ((AppModule) -> Void)?
+    @State private var lastUserInteraction = Date()
+    @State private var isUserActive = false
+    @State private var currentScrollIndex: Int = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -74,11 +81,23 @@ struct ContentView: View {
                     header
                     navigationMenu
                     contentArea
+                        .onTapGesture {
+                            onUserInteraction()
+                        }
                     Spacer()
                 }
                 .padding(.horizontal, horizontalPadding)
                 .padding(.top, topPadding)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                // Codec Alert Overlay
+                if codecAlertManager.isShowingAlert,
+                   let alert = codecAlertManager.currentAlert {
+                    CodecAlertView(alert: alert) {
+                        codecAlertManager.dismissAlert()
+                    }
+                    .zIndex(1000)
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -211,24 +230,41 @@ struct ContentView: View {
     }
 
     private var navigationMenu: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(AppModule.navigationModules, id: \.self) { module in
-                    NavigationItem(
-                        module: module,
-                        isActive: coordinator.currentModule == module
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            coordinator.currentModule = module
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(AppModule.navigationModules, id: \.self) { module in
+                        NavigationItem(
+                            module: module,
+                            isActive: coordinator.currentModule == module
+                        ) {
+                            onUserInteraction()
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                coordinator.currentModule = module
+                            }
                         }
+                        .frame(minWidth: 80)
+                        .id(module)
                     }
-                    .frame(minWidth: 80) // Ensure consistent minimum width
                 }
+                .scrollTargetLayout()
+                .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 8)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollIndicators(.hidden)
+            .onAppear {
+                scrollAction = { module in
+                    scrollProxy.scrollTo(module, anchor: .center)
+                }
+                startAutoScroll()
+            }
+            .onTapGesture {
+                onUserInteraction()
+            }
+            .onDisappear {
+                stopAutoScroll()
+            }
         }
-        .scrollTargetBehavior(.viewAligned)
-        .scrollIndicators(.hidden)
     }
 
     private var contentArea: some View {
@@ -238,12 +274,18 @@ struct ContentView: View {
                 MissionView()
             case .map:
                 MapView()
+            case .compass:
+                Text("COMPASS MODULE")
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(themeManager.primaryColor)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(themeManager.backgroundColor)
+            case .audio:
+                AudioView()
             case .intel:
                 IntelView()
             case .alerts:
                 AlertsView()
-            case .audio:
-                AudioView()
             case .camera:
                 CameraView()
             case .settings:
@@ -252,6 +294,45 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: coordinator.currentModule)
+    }
+
+    private func startAutoScroll() {
+        stopAutoScroll()
+
+        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { _ in
+            Task { @MainActor in
+                // Only scroll if user hasn't been active in the last 5 seconds
+                let timeSinceLastInteraction = Date().timeIntervalSince(lastUserInteraction)
+                guard timeSinceLastInteraction > 5.0 else { return }
+
+                let modules = AppModule.navigationModules
+                guard !modules.isEmpty else { return }
+
+                // Move to next module in circular sequence (always left)
+                currentScrollIndex = (currentScrollIndex + 1) % modules.count
+                let moduleToScrollTo = modules[currentScrollIndex]
+
+                // Consistent linear movement to the left
+                withAnimation(.linear(duration: 2.0)) {
+                    scrollAction?(moduleToScrollTo)
+                }
+            }
+        }
+    }
+
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+    }
+
+    private func onUserInteraction() {
+        lastUserInteraction = Date()
+        isUserActive = true
+
+        // Reset user activity after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) {
+            isUserActive = false
+        }
     }
 }
 
@@ -818,6 +899,7 @@ struct MissionTimelineChart: View {
             }
         }
     }
+
 }
 
 extension DateFormatter {
