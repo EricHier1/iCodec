@@ -345,6 +345,17 @@ struct NewMissionSheet: View {
                         .textFieldStyle(CodecTextFieldStyle())
                         .lineLimit(3...6)
 
+                    if let error = viewModel.missionError {
+                        HStack {
+                            Text(error)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
                     HStack {
                         Text("Priority:")
                             .font(.system(size: 12, design: .monospaced))
@@ -382,13 +393,14 @@ struct NewMissionSheet: View {
                     }, style: .secondary, size: .fullWidth)
 
                     CodecButton(title: "CREATE", action: {
-                        viewModel.createMission(
+                        if viewModel.createMission(
                             title: title,
                             description: description,
                             priority: priority,
                             progress: progress
-                        )
-                        dismiss()
+                        ) {
+                            dismiss()
+                        }
                     }, style: .primary, size: .fullWidth)
                 }
             }
@@ -513,6 +525,7 @@ class MissionViewModel: BaseViewModel {
     @Published var showNewMissionDialog = false
     @Published var showEditMissionDialog = false
     @Published var missionToEdit: Mission?
+    @Published var missionError: String?
 
     private let persistenceController = PersistenceController.shared
 
@@ -543,13 +556,45 @@ class MissionViewModel: BaseViewModel {
         }
     }
 
-    func createMission(title: String, description: String, priority: Priority, progress: Double) {
+    func createMission(title: String, description: String, priority: Priority, progress: Double) -> Bool {
+        missionError = nil
+
+        // Validate input
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedTitle.isEmpty else {
+            missionError = "Mission title is required"
+            return false
+        }
+
+        guard trimmedTitle.count <= 100 else {
+            missionError = "Mission title must be 100 characters or less"
+            return false
+        }
+
+        guard !trimmedDescription.isEmpty else {
+            missionError = "Mission description is required"
+            return false
+        }
+
+        guard trimmedDescription.count <= 500 else {
+            missionError = "Mission description must be 500 characters or less"
+            return false
+        }
+
+        // Check for duplicate mission titles
+        if missions.contains(where: { $0.name?.lowercased() == trimmedTitle.lowercased() }) {
+            missionError = "A mission with this title already exists"
+            return false
+        }
+
         let context = persistenceController.container.viewContext
         let newMission = Mission(context: context)
 
         newMission.id = UUID()
-        newMission.name = title
-        newMission.missionDescription = description
+        newMission.name = trimmedTitle
+        newMission.missionDescription = trimmedDescription
         newMission.priority = priority.rawValue
         newMission.progress = progress
         newMission.status = currentMission == nil ? "active" : status(for: newMission, progress: progress)
@@ -561,8 +606,10 @@ class MissionViewModel: BaseViewModel {
                 currentMission = newMission
             }
             fetchMissions()
+            return true
         } catch {
-            print("Error saving mission: \(error)")
+            missionError = "Failed to save mission: \(error.localizedDescription)"
+            return false
         }
     }
 

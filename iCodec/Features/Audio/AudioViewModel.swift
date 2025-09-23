@@ -22,6 +22,7 @@ class AudioViewModel: NSObject, ObservableObject {
     @Published var customStationName = ""
     @Published var customStationURL = ""
     @Published var customStationFrequency = ""
+    @Published var customStationError: String?
 
     private var audioPlayer: AVAudioPlayer?
     private var radioPlayer: AVPlayer?
@@ -57,8 +58,12 @@ class AudioViewModel: NSObject, ObservableObject {
     deinit {
         print("🔊 AudioViewModel deinitializing")
 
-        // Clean up observer
-        playerObserver = nil
+        // Clean up observer safely
+        if playerObserver != nil {
+            // Note: The observer is a KVO observer, not a time observer
+            // KVO observers are automatically cleaned up when the object is deallocated
+            playerObserver = nil
+        }
 
         // Clean up audio resources synchronously in deinit
         radioPlayer?.pause()
@@ -511,15 +516,50 @@ class AudioViewModel: NSObject, ObservableObject {
     }
 
     func addCustomStation() {
-        guard !customStationName.isEmpty,
-              !customStationURL.isEmpty,
-              let _ = URL(string: customStationURL) else { return }
+        customStationError = nil
+
+        // Validate input
+        guard !customStationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            customStationError = "Station name is required"
+            return
+        }
+
+        guard !customStationURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            customStationError = "Station URL is required"
+            return
+        }
+
+        let trimmedURL = customStationURL.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Validate URL format and security
+        guard let url = URL(string: trimmedURL),
+              let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https") else {
+            customStationError = "Invalid URL format. Must start with http:// or https://"
+            return
+        }
+
+        // Basic security check - no localhost or private IPs in production
+        let host = url.host?.lowercased() ?? ""
+        if host.contains("localhost") || host.hasPrefix("127.") || host.hasPrefix("192.168.") || host.hasPrefix("10.") {
+            customStationError = "Local or private network URLs are not allowed"
+            return
+        }
+
+        // Check for duplicate stations
+        if customStations.contains(where: { $0.url.lowercased() == trimmedURL.lowercased() }) {
+            customStationError = "This station URL already exists"
+            return
+        }
+
+        let trimmedName = customStationName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedFrequency = customStationFrequency.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let newStation = RadioStation(
             id: UUID(),
-            name: customStationName.uppercased(),
-            url: customStationURL,
-            frequency: customStationFrequency.isEmpty ? "00.0" : customStationFrequency
+            name: trimmedName.uppercased(),
+            url: trimmedURL,
+            frequency: trimmedFrequency.isEmpty ? "00.0" : trimmedFrequency
         )
 
         customStations.append(newStation)
@@ -529,6 +569,7 @@ class AudioViewModel: NSObject, ObservableObject {
         customStationName = ""
         customStationURL = ""
         customStationFrequency = ""
+        customStationError = nil
     }
 
     func deleteCustomStation(_ station: RadioStation) {
@@ -553,13 +594,10 @@ class AudioViewModel: NSObject, ObservableObject {
     func playCustomStation(_ station: RadioStation) {
         // Find the station in the combined list and set it as current
         if let index = radioStations.firstIndex(where: { $0.id == station.id }) {
-            let wasPlaying = isPlaying
             stopRadio()
             currentStationIndex = index
             currentStation = station
-            if wasPlaying {
-                playRadio()
-            }
+            playRadio()
         }
     }
 

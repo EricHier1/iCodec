@@ -321,6 +321,18 @@ struct AudioView: View {
 
                         Spacer()
                     }
+
+                    if let error = viewModel.customStationError {
+                        HStack {
+                            Text(error)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                    }
                 }
             }
 

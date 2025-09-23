@@ -19,8 +19,7 @@ struct PersistenceController {
         do {
             try viewContext.save()
         } catch {
-            let nsError = error as NSError
-            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            print("Error saving preview context: \(error)")
         }
         return result
     }()
@@ -31,10 +30,11 @@ struct PersistenceController {
         container = NSPersistentCloudKitContainer(name: "iCodec")
 
         if inMemory {
-            container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
+            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
         } else {
             guard let description = container.persistentStoreDescriptions.first else {
-                fatalError("Failed to retrieve a persistent store description.")
+                print("Warning: Failed to retrieve a persistent store description.")
+                return
             }
 
             description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
@@ -43,7 +43,8 @@ struct PersistenceController {
 
         container.loadPersistentStores(completionHandler: { (storeDescription, error) in
             if let error = error as NSError? {
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+                print("Core Data error: \(error), \(error.userInfo)")
+                // Handle the error gracefully - app can still function with limited capabilities
             }
         })
 
@@ -59,8 +60,9 @@ extension PersistenceController {
             do {
                 try context.save()
             } catch {
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+                print("Core Data save error: \(error)")
+                // Attempt to rollback changes
+                context.rollback()
             }
         }
     }
