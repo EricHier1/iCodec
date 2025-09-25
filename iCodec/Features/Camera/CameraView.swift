@@ -15,7 +15,6 @@ struct CameraView: View {
                 // Real camera preview
                 CameraPreview(session: viewModel.captureSession)
                     .ignoresSafeArea()
-                    .scaleEffect(viewModel.zoomLevel)
                     .id("camera-preview-\(viewModel.cameraAvailable ? 1 : 0)") // Force recreation when availability changes
                     .gesture(
                         SimultaneousGesture(
@@ -32,6 +31,9 @@ struct CameraView: View {
                                 }
                         )
                     )
+                    .onTapGesture { location in
+                        viewModel.focusAt(location: location)
+                    }
                     .overlay(
                         filterOverlay
                             .ignoresSafeArea()
@@ -129,9 +131,9 @@ struct CameraView: View {
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(themeManager.primaryColor)
 
-                Text(viewModel.isRecording ? "REC ●" : "STANDBY")
+                Text("STANDBY")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(viewModel.isRecording ? themeManager.errorColor : themeManager.successColor)
+                    .foregroundColor(themeManager.successColor)
             }
 
             Spacer()
@@ -211,26 +213,6 @@ struct CameraView: View {
             }
             .disabled(!viewModel.cameraAvailable)
 
-            // Toggle recording
-            Button(action: {
-                TacticalSoundPlayer.playAction()
-                viewModel.toggleRecording()
-            }) {
-                Text(viewModel.isRecording ? "STOP" : "REC")
-                    .font(.system(size: 14, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor)
-                    .frame(width: 60, height: 40) // Fixed width to prevent resizing
-                    .background((viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor).opacity(0.2))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(viewModel.isRecording ? themeManager.secondaryColor : themeManager.primaryColor, lineWidth: 1)
-                    )
-                    .overlay(
-                        ScanlineOverlay()
-                            .opacity(0.3)
-                    )
-            }
         }
         .padding(.bottom, 30)
     }
@@ -298,7 +280,6 @@ class CameraPreviewUIView: UIView {
 class CameraViewModel: BaseViewModel {
     @Published @MainActor var isAuthorized = false
     @Published @MainActor var cameraAvailable = false
-    @Published @MainActor var isRecording = false
     @Published @MainActor var zoomLevel: CGFloat = 1.0
     @Published @MainActor var currentFilter: CameraFilter = .normal
     @Published @MainActor var exposureBias: Float = 0.0
@@ -474,11 +455,6 @@ class CameraViewModel: BaseViewModel {
         photoOutput.capturePhoto(with: settings, delegate: delegate)
     }
 
-    @MainActor
-    func toggleRecording() {
-        isRecording.toggle()
-        // In a real implementation, start/stop video recording here
-    }
 
     @MainActor
     func cycleFilter() {
@@ -517,9 +493,37 @@ class CameraViewModel: BaseViewModel {
     }
 
     private func applyZoomToDevice(_ zoom: CGFloat) {
-        // Disabled hardware zoom to prevent crashes
-        // Zoom is now handled by UI scaling only
-        print("UI zoom: \(zoom)x")
+        guard let device = currentDevice else {
+            print("UI zoom: \(zoom)x (no device)")
+            return
+        }
+
+        do {
+            try device.lockForConfiguration()
+
+            // Apply zoom factor safely within device limits
+            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 8.0)
+            let clampedZoom = max(1.0, min(maxZoom, zoom))
+            device.videoZoomFactor = clampedZoom
+
+            // Auto-focus after zoom change for better image quality
+            if device.isFocusModeSupported(.autoFocus) {
+                device.focusMode = .autoFocus
+            }
+
+            // Optionally adjust exposure for better image quality at zoom
+            if device.isExposureModeSupported(.autoExpose) {
+                device.exposureMode = .autoExpose
+            }
+
+            device.unlockForConfiguration()
+            print("Hardware zoom applied: \(clampedZoom)x with refocus")
+
+        } catch {
+            print("Failed to apply zoom: \(error)")
+            // Fallback to UI zoom only
+            print("UI zoom: \(zoom)x")
+        }
     }
 
     @MainActor
@@ -528,6 +532,43 @@ class CameraViewModel: BaseViewModel {
         zoomLevel = 1.0
         applyZoomToDevice(1.0)
         TacticalSoundPlayer.playNavigation()
+    }
+
+    @MainActor
+    func focusAt(location: CGPoint) {
+        guard let device = currentDevice else {
+            print("No camera device available for focus")
+            return
+        }
+
+        do {
+            try device.lockForConfiguration()
+
+            // Convert tap location to device coordinates (0-1 range)
+            // Note: This is a simplified conversion - in a full implementation,
+            // you'd need to account for preview layer bounds and orientation
+            let focusPoint = CGPoint(x: location.x / UIScreen.main.bounds.width,
+                                   y: location.y / UIScreen.main.bounds.height)
+
+            // Set focus point if supported
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = focusPoint
+                device.focusMode = .autoFocus
+            }
+
+            // Set exposure point if supported
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = focusPoint
+                device.exposureMode = .autoExpose
+            }
+
+            device.unlockForConfiguration()
+            print("Focus applied at point: \(focusPoint)")
+            TacticalSoundPlayer.playNavigation()
+
+        } catch {
+            print("Failed to focus at location: \(error)")
+        }
     }
 
     @MainActor
