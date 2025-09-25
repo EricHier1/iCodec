@@ -319,7 +319,7 @@ struct ActiveMissionControls: View {
                     TacticalSoundPlayer.playAction()
                     viewModel.completeMission(mission)
                 }, style: .primary, size: .small)
-                .disabled(progressValue >= 100)
+                .disabled(progressValue < 100)
 
                 Spacer()
             }
@@ -974,10 +974,7 @@ class MissionViewModel: BaseViewModel {
 
         do {
             try context.save()
-            DispatchQueue.main.async {
-                self.objectWillChange.send()
-                self.fetchMissions()
-            }
+            fetchMissions()
         } catch {
             print("Error updating mission: \(error)")
         }
@@ -1026,10 +1023,7 @@ class MissionViewModel: BaseViewModel {
 
         do {
             try context.save()
-            DispatchQueue.main.async {
-                self.objectWillChange.send()
-                self.fetchMissions()
-            }
+            fetchMissions()
         } catch {
             print("Error reactivating mission: \(error)")
         }

@@ -13,6 +13,23 @@ class AppCoordinator: ObservableObject {
     }
 
     private func setupBindings() {
+        // Listen for notification-based navigation requests
+        NotificationCenter.default.publisher(for: .navigationRequested)
+            .sink { [weak self] notification in
+                if let destination = notification.object as? NavigationDestination {
+                    self?.navigate(to: destination)
+                }
+            }
+            .store(in: &cancellables)
+
+        // Listen for module changes to trigger sound effects
+        $currentModule
+            .removeDuplicates()
+            .dropFirst()
+            .sink { _ in
+                TacticalSoundPlayer.playNavigation()
+            }
+            .store(in: &cancellables)
     }
 
     func navigate(to destination: NavigationDestination) {
@@ -78,4 +95,8 @@ enum NavigationDestination: Hashable {
     case audioDetail(UUID)
     case settings
     case about
+}
+
+extension Notification.Name {
+    static let navigationRequested = Notification.Name("navigationRequested")
 }

@@ -56,6 +56,14 @@ extension PersistenceController {
     func save() {
         let context = container.viewContext
 
+        // Ensure we're on the main queue for view context operations
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.save()
+            }
+            return
+        }
+
         if context.hasChanges {
             do {
                 try context.save()
@@ -63,6 +71,21 @@ extension PersistenceController {
                 print("Core Data save error: \(error)")
                 // Attempt to rollback changes
                 context.rollback()
+            }
+        }
+    }
+
+    func performBackgroundTask<T>(_ block: @escaping (NSManagedObjectContext) -> T) {
+        container.performBackgroundTask { context in
+            _ = block(context)
+
+            if context.hasChanges {
+                do {
+                    try context.save()
+                } catch {
+                    print("Background Core Data save error: \(error)")
+                    context.rollback()
+                }
             }
         }
     }

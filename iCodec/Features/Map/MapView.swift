@@ -113,6 +113,7 @@ struct MapView: View {
         VStack(alignment: .leading, spacing: 4) {
             infoLine(label: "MODE", value: viewModel.currentMode.rawValue)
             infoLine(label: "WPTS", value: "\(viewModel.waypoints.count)")
+            infoLine(label: "FOLLOW", value: viewModel.isFollowingUser ? "ON" : "OFF")
             infoLine(label: "SCALE", value: viewModel.scaleText)
             infoLine(label: "LAT", value: formattedCoordinate(viewModel.mapCenter.latitude, axis: .latitude))
             infoLine(label: "LON", value: formattedCoordinate(viewModel.mapCenter.longitude, axis: .longitude))
@@ -131,9 +132,9 @@ struct MapView: View {
                 viewModel.cycleMode()
             }, style: .primary, size: .small)
 
-            MapIconButton(systemName: "location.fill") {
+            MapIconButton(systemName: viewModel.isFollowingUser ? "location.fill" : "location") {
                 TacticalSoundPlayer.playNavigation()
-                viewModel.centerOnUser()
+                viewModel.toggleFollowUser()
             }
 
             CodecButton(title: "MARK", action: {
@@ -387,6 +388,7 @@ class MapViewModel: BaseViewModel {
     @Published var showWaypointEditor = false
     @Published var lastKnownLocation: CLLocation?
     @Published var locationError: String?
+    @Published var isFollowingUser = false
 
     private let locationManager = CLLocationManager()
     private var locationDelegate: MapLocationDelegate?
@@ -501,6 +503,18 @@ class MapViewModel: BaseViewModel {
             if self.waypoints.isEmpty {
                 self.createSampleWaypointsNearLocation(location.coordinate)
             }
+        } else if isFollowingUser {
+            // Continue following user location updates
+            withAnimation(.easeInOut(duration: 0.3)) {
+                let newRegion = MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: region.span
+                )
+                self.region = newRegion
+                self.cameraPosition = .region(newRegion)
+                self.updateMapCenter()
+                self.updateScaleText(for: newRegion)
+            }
         }
     }
 
@@ -533,14 +547,22 @@ class MapViewModel: BaseViewModel {
         }
     }
 
-    func updateCameraRegion(_ region: MKCoordinateRegion) {
-        DispatchQueue.main.async {
-            self.objectWillChange.send()
-            self.region = region
-            self.mapCenter = region.center
-            self.cameraPosition = .region(region)
-            self.updateScaleText(for: region)
+    func toggleFollowUser() {
+        isFollowingUser.toggle()
+        if isFollowingUser {
+            centerOnUser()
         }
+    }
+
+    func updateCameraRegion(_ region: MKCoordinateRegion) {
+        // Disable following when user manually moves the map
+        if isFollowingUser {
+            isFollowingUser = false
+        }
+        self.region = region
+        self.mapCenter = region.center
+        self.cameraPosition = .region(region)
+        self.updateScaleText(for: region)
     }
 
     private func updateMapCenter() {

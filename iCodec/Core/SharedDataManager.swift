@@ -5,12 +5,12 @@ import Combine
 class SharedDataManager: ObservableObject {
     static let shared = SharedDataManager()
 
-    // Shared ViewModels
-    let missionViewModel = MissionViewModel()
-    let alertsViewModel = AlertsViewModel()
-    let intelViewModel = IntelViewModel()
-    let mapViewModel = MapViewModel()
-    @Published var audioViewModel = AudioViewModel()
+    // Shared ViewModels - using lazy initialization to avoid circular references
+    lazy var missionViewModel = MissionViewModel()
+    lazy var alertsViewModel = AlertsViewModel()
+    lazy var intelViewModel = IntelViewModel()
+    lazy var mapViewModel = MapViewModel()
+    lazy var audioViewModel = AudioViewModel()
 
     // App Coordinator for navigation
     var appCoordinator: AppCoordinator?
@@ -24,34 +24,22 @@ class SharedDataManager: ObservableObject {
 
     private init() {
         // Private initializer for singleton
-        setupMissionStatsObservers()
-        setupAudioViewModelObserver()
+        // Delay setup to avoid circular references during initialization
+        Task { @MainActor in
+            setupMissionStatsObservers()
+        }
     }
 
     private func setupMissionStatsObservers() {
         // Subscribe to mission changes and update stats
         missionViewModel.objectWillChange
             .sink { [weak self] _ in
-                DispatchQueue.main.async {
-                    self?.updateMissionStats()
-                }
+                self?.updateMissionStats()
             }
             .store(in: &cancellables)
 
         // Initial stats calculation
         updateMissionStats()
-    }
-
-    private func setupAudioViewModelObserver() {
-        // Subscribe to audio view model changes to propagate them to UI
-        audioViewModel.objectWillChange
-            .sink { [weak self] _ in
-                print("📢 SharedDataManager: AudioViewModel changed, propagating to UI")
-                DispatchQueue.main.async {
-                    self?.objectWillChange.send()
-                }
-            }
-            .store(in: &cancellables)
     }
 
     func updateMissionStats() {

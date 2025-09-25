@@ -5,7 +5,7 @@ import Combine
 import Foundation
 
 @MainActor
-class AudioViewModel: NSObject, ObservableObject {
+class AudioViewModel: BaseViewModel {
     @Published var isPlaying = false
     @Published var volume: Double = 0.5
     @Published var currentStation: RadioStation?
@@ -36,6 +36,14 @@ class AudioViewModel: NSObject, ObservableObject {
     private var audioLevelTimer: Timer?
     private var playerObserver: Any?
     private var cancellables = Set<AnyCancellable>()
+    private var trackInfoTimer: Timer?
+    nonisolated static func getCachedDuration(for url: URL) -> String? {
+        return DurationCache.shared.getDuration(for: url)
+    }
+
+    nonisolated static func setCachedDuration(_ duration: String, for url: URL) {
+        DurationCache.shared.setDuration(duration, for: url)
+    }
 
     private let builtInStations: [RadioStation] = [
         RadioStation(id: UUID(), name: "80S HITS", url: "https://streams.80s80s.de/web/mp3-192/streams.80s80s.de/", frequency: "80.5"),
@@ -48,8 +56,11 @@ class AudioViewModel: NSObject, ObservableObject {
 
     private var currentStationIndex = 0
 
+    private var audioDelegate: AudioDelegateHandler?
+
     override init() {
         super.init()
+        audioDelegate = AudioDelegateHandler(viewModel: self)
         setupAudio()
         loadRecordings()
         loadCustomStations()
@@ -81,6 +92,9 @@ class AudioViewModel: NSObject, ObservableObject {
         audioLevelTimer?.invalidate()
         audioLevelTimer = nil
 
+        trackInfoTimer?.invalidate()
+        trackInfoTimer = nil
+
         // Cancel all Combine subscriptions
         cancellables.removeAll()
 
@@ -96,7 +110,8 @@ class AudioViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
 
-    func handleError(_ error: Error) {
+    override func handleError(_ error: Error) {
+        super.handleError(error)
         print("AudioViewModel error: \(error.localizedDescription)")
     }
 
@@ -189,13 +204,18 @@ class AudioViewModel: NSObject, ObservableObject {
         if isPlaying {
             stopRadio()
         } else {
+            // Set state immediately for responsive UI
+            isPlaying = true
             playRadio()
         }
     }
 
     private func playRadio() {
         guard let station = currentStation,
-              let url = URL(string: station.url) else { return }
+              let url = URL(string: station.url) else {
+            isPlaying = false
+            return
+        }
 
         print("🔊 Starting radio playback for: \(station.name) at \(station.url)")
         currentlyPlaying = "CONNECTING..."
@@ -210,7 +230,7 @@ class AudioViewModel: NSObject, ObservableObject {
             Task { @MainActor in
                 switch player.status {
                 case .readyToPlay:
-                    self?.isPlaying = true
+                    // Don't override isPlaying - it's already set for immediate UI feedback
                     if let station = self?.currentStation {
                         self?.currentlyPlaying = "STREAMING: \(station.name)"
                     }
@@ -232,10 +252,11 @@ class AudioViewModel: NSObject, ObservableObject {
         radioPlayer?.play()
 
         // Simulate track info updates (since most streams don't provide metadata easily)
-        Timer.scheduledTimer(withTimeInterval: 45.0, repeats: true) { _ in
+        trackInfoTimer?.invalidate()
+        trackInfoTimer = Timer.scheduledTimer(withTimeInterval: 45.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                if self.isPlaying {
-                    self.simulateTrackChange()
+                if self?.isPlaying == true {
+                    self?.simulateTrackChange()
                 }
             }
         }
@@ -278,6 +299,10 @@ class AudioViewModel: NSObject, ObservableObject {
         radioPlayer?.pause()
         radioPlayer?.replaceCurrentItem(with: nil)
         radioPlayer = nil
+
+        // Stop track info updates
+        trackInfoTimer?.invalidate()
+        trackInfoTimer = nil
 
         isPlaying = false
         currentlyPlaying = "STANDBY"
@@ -348,6 +373,9 @@ class AudioViewModel: NSObject, ObservableObject {
         if isRecording {
             stopRecording()
         } else {
+            // Set state immediately for responsive UI
+            isRecording = true
+            recordingStatus = "RECORDING"
             startRecording()
         }
     }
@@ -361,6 +389,7 @@ class AudioViewModel: NSObject, ObservableObject {
         }
 
         guard hasPermission else {
+            isRecording = false
             recordingStatus = "PERMISSION REQUIRED"
             return
         }
@@ -372,6 +401,7 @@ class AudioViewModel: NSObject, ObservableObject {
             try session.setActive(true)
         } catch {
             handleError(error)
+            isRecording = false
             recordingStatus = "AUDIO SESSION ERROR"
             return
         }
@@ -388,12 +418,11 @@ class AudioViewModel: NSObject, ObservableObject {
 
         do {
             audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-            audioRecorder?.delegate = self
+            audioRecorder?.delegate = audioDelegate
             audioRecorder?.isMeteringEnabled = true
             audioRecorder?.record()
 
-            isRecording = true
-            recordingStatus = "RECORDING"
+            // Don't override isRecording and recordingStatus - they're already set for immediate UI feedback
             recordingStartTime = Date()
 
             // Start timers
@@ -402,6 +431,7 @@ class AudioViewModel: NSObject, ObservableObject {
 
         } catch {
             handleError(error)
+            isRecording = false
             recordingStatus = "RECORDING FAILED"
         }
     }
@@ -491,7 +521,7 @@ class AudioViewModel: NSObject, ObservableObject {
             currentPlayingRecording = nil
 
             audioPlayer = try AVAudioPlayer(contentsOf: recording.url)
-            audioPlayer?.delegate = self
+            audioPlayer?.delegate = audioDelegate
             audioPlayer?.volume = Float(volume)
 
             let playResult = audioPlayer?.play() ?? false
@@ -532,7 +562,7 @@ class AudioViewModel: NSObject, ObservableObject {
         }
     }
 
-    private func loadRecordings() {
+    func loadRecordings() {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
         do {
@@ -609,9 +639,19 @@ class AudioViewModel: NSObject, ObservableObject {
             return
         }
 
-        // Basic security check - no localhost or private IPs in production
+        // Comprehensive security check - no localhost or private IPs in production
         let host = url.host?.lowercased() ?? ""
-        if host.contains("localhost") || host.hasPrefix("127.") || host.hasPrefix("192.168.") || host.hasPrefix("10.") {
+        if host.contains("localhost") ||
+           host.hasPrefix("127.") ||
+           host.hasPrefix("192.168.") ||
+           host.hasPrefix("10.") ||
+           host.hasPrefix("172.16.") || host.hasPrefix("172.17.") || host.hasPrefix("172.18.") || host.hasPrefix("172.19.") ||
+           host.hasPrefix("172.20.") || host.hasPrefix("172.21.") || host.hasPrefix("172.22.") || host.hasPrefix("172.23.") ||
+           host.hasPrefix("172.24.") || host.hasPrefix("172.25.") || host.hasPrefix("172.26.") || host.hasPrefix("172.27.") ||
+           host.hasPrefix("172.28.") || host.hasPrefix("172.29.") || host.hasPrefix("172.30.") || host.hasPrefix("172.31.") ||
+           host.hasPrefix("169.254.") || // Link-local
+           host.hasPrefix("fc") || host.hasPrefix("fd") || // IPv6 private
+           host == "0.0.0.0" || host.hasPrefix("[::]") {
             customStationError = "Local or private network URLs are not allowed"
             return
         }
@@ -710,23 +750,33 @@ class AudioViewModel: NSObject, ObservableObject {
 
 }
 
-extension AudioViewModel: AVAudioRecorderDelegate {
-    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+// Separate NSObject-based delegate handler since BaseViewModel doesn't inherit from NSObject
+private class AudioDelegateHandler: NSObject {
+    weak var viewModel: AudioViewModel?
+
+    init(viewModel: AudioViewModel) {
+        self.viewModel = viewModel
+        super.init()
+    }
+}
+
+extension AudioDelegateHandler: AVAudioRecorderDelegate {
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         Task { @MainActor in
             if flag {
-                loadRecordings()
+                viewModel?.loadRecordings()
             } else {
-                recordingStatus = "RECORDING FAILED"
+                viewModel?.recordingStatus = "RECORDING FAILED"
             }
         }
     }
 }
 
-extension AudioViewModel: AVAudioPlayerDelegate {
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+extension AudioDelegateHandler: AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
-            isPlayingRecording = false
-            currentPlayingRecording = nil
+            viewModel?.isPlayingRecording = false
+            viewModel?.currentPlayingRecording = nil
         }
     }
 }
@@ -745,12 +795,21 @@ struct VoiceRecording: Identifiable, Codable {
     var description: String
 
     var duration: String {
+        // Use cached duration if available
+        if let cached = AudioViewModel.getCachedDuration(for: url) {
+            return cached
+        }
+
         do {
             let audioPlayer = try AVAudioPlayer(contentsOf: url)
             let duration = audioPlayer.duration
             let minutes = Int(duration) / 60
             let seconds = Int(duration) % 60
-            return String(format: "%02d:%02d", minutes, seconds)
+            let formattedDuration = String(format: "%02d:%02d", minutes, seconds)
+
+            // Cache the result
+            AudioViewModel.setCachedDuration(formattedDuration, for: url)
+            return formattedDuration
         } catch {
             return "00:00"
         }
@@ -764,5 +823,27 @@ struct VoiceRecording: Identifiable, Codable {
 
     var displayName: String {
         return description.isEmpty ? "REC_\(String(format: "%.0f", date.timeIntervalSince1970))" : description
+    }
+}
+
+// Thread-safe duration cache
+private class DurationCache {
+    static let shared = DurationCache()
+
+    private let lock = NSLock()
+    private var cache: [URL: String] = [:]
+
+    private init() {}
+
+    func getDuration(for url: URL) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[url]
+    }
+
+    func setDuration(_ duration: String, for url: URL) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache[url] = duration
     }
 }

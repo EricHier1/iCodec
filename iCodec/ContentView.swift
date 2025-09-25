@@ -130,6 +130,8 @@ struct ContentView: View {
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Active missions: \(SharedDataManager.shared.activeMissionCount)")
+                    .accessibilityHint("Shows detailed mission statistics")
 
                     Button(action: {
                         print("Today missions counter tapped!")
@@ -144,6 +146,8 @@ struct ContentView: View {
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Today's completed missions: \(SharedDataManager.shared.todayCompletedCount)")
+                    .accessibilityHint("Shows detailed mission statistics")
 
                     Button(action: {
                         print("Total missions counter tapped!")
@@ -158,6 +162,8 @@ struct ContentView: View {
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Total completed missions: \(SharedDataManager.shared.totalCompletedCount)")
+                    .accessibilityHint("Shows detailed mission statistics")
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -183,7 +189,8 @@ struct ContentView: View {
                                     .stroke(themeManager.primaryColor, lineWidth: 1)
                             )
                     }
-                    .accessibilityLabel("Open Settings")
+                    .accessibilityLabel("Settings")
+                    .accessibilityHint("Opens the settings screen")
 
                     // Theme indicator
                     Button(action: {
@@ -200,6 +207,8 @@ struct ContentView: View {
                                 .foregroundColor(themeManager.primaryColor)
                         }
                     }
+                    .accessibilityLabel("Theme: \(themeManager.currentTheme.name)")
+                    .accessibilityHint("Switches to the next color theme")
 
                     HStack(spacing: 4) {
                         Circle()
@@ -245,6 +254,8 @@ struct ContentView: View {
                         }
                         .frame(minWidth: 80)
                         .id(module)
+                        .accessibilityLabel(module.rawValue)
+                        .accessibilityHint("Switches to \(module.rawValue) module")
                     }
                 }
                 .scrollTargetLayout()
