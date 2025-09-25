@@ -3,11 +3,8 @@ import AVFoundation
 
 struct AudioView: View {
     @ObservedObject private var sharedData = SharedDataManager.shared
+    @ObservedObject private var viewModel = SharedDataManager.shared.audioViewModel
     @EnvironmentObject private var themeManager: ThemeManager
-
-    private var viewModel: AudioViewModel {
-        sharedData.audioViewModel
-    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -138,7 +135,7 @@ struct AudioView: View {
                                 .font(.system(size: 8, design: .monospaced))
                                 .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                            Slider(value: $sharedData.audioViewModel.volume, in: 0...1)
+                            Slider(value: $viewModel.volume, in: 0...1)
                                 .frame(width: 80)
                                 .tint(themeManager.primaryColor)
                         }
@@ -207,6 +204,29 @@ struct AudioView: View {
                         }
                     }
 
+                    // Recording name input (only when not recording)
+                    if !viewModel.isRecording {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("RECORDING NAME (OPTIONAL)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+
+                            TextField("Enter name for recording", text: $viewModel.recordingName)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(themeManager.primaryColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(themeManager.surfaceColor.opacity(0.3))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+                                )
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        }
+                    }
+
                     // Controls
                     HStack(spacing: 16) {
                         Button(action: {
@@ -258,7 +278,7 @@ struct AudioView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                            TextField("", text: $sharedData.audioViewModel.customStationName)
+                            TextField("", text: $viewModel.customStationName)
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.primaryColor)
@@ -276,7 +296,7 @@ struct AudioView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                            TextField("", text: $sharedData.audioViewModel.customStationFrequency)
+                            TextField("", text: $viewModel.customStationFrequency)
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(themeManager.primaryColor)
@@ -296,7 +316,7 @@ struct AudioView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(themeManager.textColor.opacity(0.7))
 
-                        TextField("https://example.com/stream", text: $sharedData.audioViewModel.customStationURL)
+                        TextField("https://example.com/stream", text: $viewModel.customStationURL)
                             .textFieldStyle(PlainTextFieldStyle())
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(themeManager.primaryColor)

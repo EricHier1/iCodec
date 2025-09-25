@@ -25,6 +25,8 @@ class AudioViewModel: BaseViewModel {
     @Published var customStationURL = ""
     @Published var customStationFrequency = ""
     @Published var customStationError: String?
+    @Published var recordingName = ""
+    fileprivate var currentRecordingName = ""
 
     private var audioPlayer: AVAudioPlayer?
     private var radioPlayer: AVPlayer?
@@ -204,8 +206,6 @@ class AudioViewModel: BaseViewModel {
         if isPlaying {
             stopRadio()
         } else {
-            // Set state immediately for responsive UI
-            isPlaying = true
             playRadio()
         }
     }
@@ -213,9 +213,11 @@ class AudioViewModel: BaseViewModel {
     private func playRadio() {
         guard let station = currentStation,
               let url = URL(string: station.url) else {
-            isPlaying = false
             return
         }
+
+        // Set state immediately for responsive UI after guard checks pass
+        isPlaying = true
 
         print("🔊 Starting radio playback for: \(station.name) at \(station.url)")
         currentlyPlaying = "CONNECTING..."
@@ -373,9 +375,6 @@ class AudioViewModel: BaseViewModel {
         if isRecording {
             stopRecording()
         } else {
-            // Set state immediately for responsive UI
-            isRecording = true
-            recordingStatus = "RECORDING"
             startRecording()
         }
     }
@@ -389,10 +388,13 @@ class AudioViewModel: BaseViewModel {
         }
 
         guard hasPermission else {
-            isRecording = false
             recordingStatus = "PERMISSION REQUIRED"
             return
         }
+
+        // Set state immediately for responsive UI after permission check passes
+        isRecording = true
+        recordingStatus = "RECORDING"
 
         // Reconfigure audio session for recording
         do {
@@ -407,7 +409,28 @@ class AudioViewModel: BaseViewModel {
         }
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let audioFilename = documentsPath.appendingPathComponent("recording_\(Date().timeIntervalSince1970).m4a")
+
+        // Use custom name if provided, otherwise use timestamp
+        let timestamp = Date().timeIntervalSince1970
+        let filename: String
+        if recordingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            filename = "recording_\(timestamp).m4a"
+        } else {
+            // Sanitize the filename to remove invalid characters
+            let sanitizedName = recordingName.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+                .replacingOccurrences(of: "\\", with: "_")
+                .replacingOccurrences(of: "*", with: "_")
+                .replacingOccurrences(of: "?", with: "_")
+                .replacingOccurrences(of: "\"", with: "_")
+                .replacingOccurrences(of: "<", with: "_")
+                .replacingOccurrences(of: ">", with: "_")
+                .replacingOccurrences(of: "|", with: "_")
+            filename = "\(sanitizedName)_\(Int(timestamp)).m4a"
+        }
+
+        let audioFilename = documentsPath.appendingPathComponent(filename)
 
         let settings = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -424,6 +447,9 @@ class AudioViewModel: BaseViewModel {
 
             // Don't override isRecording and recordingStatus - they're already set for immediate UI feedback
             recordingStartTime = Date()
+
+            // Store the recording name for when recording finishes
+            currentRecordingName = recordingName.trimmingCharacters(in: .whitespacesAndNewlines)
 
             // Start timers
             startRecordingTimer()
@@ -450,6 +476,9 @@ class AudioViewModel: BaseViewModel {
 
         // Reconfigure audio session back to playback mode
         setupAudio()
+
+        // Clear recording name after successful recording
+        recordingName = ""
 
         // Reload recordings
         loadRecordings()
@@ -572,7 +601,13 @@ class AudioViewModel: BaseViewModel {
             let savedRecordings = loadRecordingMetadata()
 
             recordings = files
-                .filter { $0.pathExtension == "m4a" && $0.lastPathComponent.hasPrefix("recording_") }
+                .filter { url in
+                    // Include .m4a files that either start with "recording_" OR end with timestamp pattern
+                    guard url.pathExtension == "m4a" else { return false }
+                    let filename = url.lastPathComponent
+                    return filename.hasPrefix("recording_") ||
+                           filename.range(of: #"_\d+\.m4a$"#, options: .regularExpression) != nil
+                }
                 .compactMap { url -> VoiceRecording? in
                     guard let creationDate = try? url.resourceValues(forKeys: [.creationDateKey]).creationDate else {
                         return nil
@@ -765,6 +800,11 @@ extension AudioDelegateHandler: AVAudioRecorderDelegate {
         Task { @MainActor in
             if flag {
                 viewModel?.loadRecordings()
+                // Set the custom name as description for the most recent recording
+                if let vm = viewModel, !vm.currentRecordingName.isEmpty, let mostRecent = vm.recordings.first {
+                    vm.updateRecordingDescription(mostRecent, description: vm.currentRecordingName)
+                }
+                viewModel?.currentRecordingName = ""
             } else {
                 viewModel?.recordingStatus = "RECORDING FAILED"
             }
