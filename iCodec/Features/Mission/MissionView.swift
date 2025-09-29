@@ -217,6 +217,20 @@ struct MissionCard: View {
                     .lineLimit(2)
             }
 
+            // Waypoint location
+            if let waypointName = mission.waypointName, !waypointName.isEmpty,
+               let waypointId = mission.waypointId {
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(themeManager.accentColor)
+
+                    Text("\(waypointName) (\(waypointId))")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(themeManager.accentColor)
+                }
+            }
+
             // Progress bar
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -351,6 +365,7 @@ struct NewMissionSheet: View {
     @State private var priority: Priority = .medium
     @State private var deadline = Date()
     @State private var progress: Double = 0
+    @State private var selectedWaypointId: String?
 
     var body: some View {
         GeometryReader { geometry in
@@ -375,7 +390,8 @@ struct NewMissionSheet: View {
                             title: title,
                             description: description,
                             priority: priority,
-                            progress: progress
+                            progress: progress,
+                            waypointId: selectedWaypointId
                         ) {
                             dismiss()
                         }
@@ -402,6 +418,30 @@ struct NewMissionSheet: View {
 
                             TextField("Enter mission title...", text: $title)
                                 .textFieldStyle(CodecTextFieldStyle())
+                        }
+
+                        // Waypoint assignment
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MISSION LOCATION")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            Picker("Waypoint", selection: $selectedWaypointId) {
+                                Text("No waypoint assigned").tag(nil as String?)
+                                ForEach(SharedDataManager.shared.mapViewModel.waypoints) { waypoint in
+                                    Text("\(waypoint.name) (\(waypoint.id))").tag(waypoint.id as String?)
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(themeManager.surfaceColor.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+                            )
+                            .cornerRadius(8)
                         }
 
                         // Priority and progress
@@ -692,6 +732,7 @@ struct EditMissionSheet: View {
     @State private var description = ""
     @State private var priority: Priority = .medium
     @State private var progress: Double = 0
+    @State private var selectedWaypointId: String?
 
     var body: some View {
         GeometryReader { geometry in
@@ -718,7 +759,8 @@ struct EditMissionSheet: View {
                                 title: title,
                                 description: description,
                                 priority: priority,
-                                progress: progress
+                                progress: progress,
+                                waypointId: selectedWaypointId
                             )
                         }
                         dismiss()
@@ -745,6 +787,30 @@ struct EditMissionSheet: View {
 
                             TextField("Enter mission title...", text: $title)
                                 .textFieldStyle(CodecTextFieldStyle())
+                        }
+
+                        // Waypoint assignment
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MISSION LOCATION")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(themeManager.textColor.opacity(0.7))
+                                .fontWeight(.bold)
+
+                            Picker("Waypoint", selection: $selectedWaypointId) {
+                                Text("No waypoint assigned").tag(nil as String?)
+                                ForEach(SharedDataManager.shared.mapViewModel.waypoints) { waypoint in
+                                    Text("\(waypoint.name) (\(waypoint.id))").tag(waypoint.id as String?)
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(themeManager.surfaceColor.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 1)
+                            )
+                            .cornerRadius(8)
                         }
 
                         // Priority and progress
@@ -802,6 +868,7 @@ struct EditMissionSheet: View {
                 description = mission.missionDescription ?? ""
                 priority = Priority(rawValue: mission.priority ?? "medium") ?? .medium
                 progress = mission.progress
+                selectedWaypointId = mission.waypointId
             }
         }
     }
@@ -865,7 +932,7 @@ class MissionViewModel: BaseViewModel {
         }
     }
 
-    func createMission(title: String, description: String, priority: Priority, progress: Double) -> Bool {
+    func createMission(title: String, description: String, priority: Priority, progress: Double, waypointId: String? = nil) -> Bool {
         missionError = nil
 
         // Validate input
@@ -908,6 +975,16 @@ class MissionViewModel: BaseViewModel {
         newMission.progress = progress
         newMission.status = currentMission == nil ? "active" : status(for: newMission, progress: progress)
         newMission.timestamp = Date()
+
+        // Set waypoint if provided
+        if let waypointId = waypointId {
+            if let waypoint = SharedDataManager.shared.mapViewModel.waypoints.first(where: { $0.id == waypointId }) {
+                newMission.waypointId = waypoint.id
+                newMission.waypointName = waypoint.name
+                newMission.latitude = waypoint.coordinate.latitude
+                newMission.longitude = waypoint.coordinate.longitude
+            }
+        }
 
         do {
             try context.save()
@@ -958,7 +1035,7 @@ class MissionViewModel: BaseViewModel {
         showMissionDetailDialog = true
     }
 
-    func updateMission(_ mission: Mission, title: String, description: String, priority: Priority, progress: Double) {
+    func updateMission(_ mission: Mission, title: String, description: String, priority: Priority, progress: Double, waypointId: String? = nil) {
         let context = persistenceController.container.viewContext
 
         mission.name = title
@@ -966,6 +1043,22 @@ class MissionViewModel: BaseViewModel {
         mission.priority = priority.rawValue
         mission.progress = progress
         mission.status = status(for: mission, progress: progress)
+
+        // Update waypoint if provided
+        if let waypointId = waypointId {
+            if let waypoint = SharedDataManager.shared.mapViewModel.waypoints.first(where: { $0.id == waypointId }) {
+                mission.waypointId = waypoint.id
+                mission.waypointName = waypoint.name
+                mission.latitude = waypoint.coordinate.latitude
+                mission.longitude = waypoint.coordinate.longitude
+            }
+        } else {
+            // Clear waypoint assignment
+            mission.waypointId = nil
+            mission.waypointName = nil
+            mission.latitude = 0
+            mission.longitude = 0
+        }
 
         if mission.status == "completed" && currentMission?.objectID == mission.objectID {
             currentMission = nil
