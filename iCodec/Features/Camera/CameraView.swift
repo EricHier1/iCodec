@@ -1024,31 +1024,60 @@ private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
         // Draw waypoint name and distance below
         let labelY = position.y + circleRadius + 8 * scale
 
-        // Draw background for text
-        let nameText = waypoint.name
-        let distanceText = formatDistance(distance)
-        let labelText = "\(nameText)\n\(distanceText)" as NSString
+        // Prepare text attributes with shadow
+        let shadowColor = UIColor.black.withAlphaComponent(0.7)
+        let shadow = NSShadow()
+        shadow.shadowColor = shadowColor
+        shadow.shadowBlurRadius = 2 * scale
+        shadow.shadowOffset = CGSize(width: 0, height: 0)
 
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.monospacedSystemFont(ofSize: 12 * scale, weight: .bold),
-            .foregroundColor: UIColor.white
+            .foregroundColor: UIColor.white,
+            .shadow: shadow
         ]
 
-        let labelSize = labelText.size(withAttributes: labelAttributes)
-        let labelRect = CGRect(
-            x: position.x - labelSize.width / 2,
-            y: labelY,
-            width: labelSize.width,
-            height: labelSize.height
+        // Draw name and distance separately for better control
+        let nameText = waypoint.name as NSString
+        let distanceText = formatDistance(distance) as NSString
+
+        let nameSize = nameText.size(withAttributes: labelAttributes)
+        let distanceSize = distanceText.size(withAttributes: labelAttributes)
+
+        let maxWidth = max(nameSize.width, distanceSize.width)
+        let totalHeight = nameSize.height + distanceSize.height + 4 * scale
+
+        // Calculate background rect
+        let backgroundRect = CGRect(
+            x: position.x - maxWidth / 2 - 8 * scale,
+            y: labelY - 4 * scale,
+            width: maxWidth + 16 * scale,
+            height: totalHeight + 8 * scale
         )
 
-        // Background
-        let backgroundRect = labelRect.insetBy(dx: -8 * scale, dy: -4 * scale)
+        // Draw rounded background
+        let backgroundPath = UIBezierPath(roundedRect: backgroundRect, cornerRadius: 4 * scale)
         context.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
-        context.fill(backgroundRect)
+        context.addPath(backgroundPath.cgPath)
+        context.fillPath()
 
-        // Text
-        labelText.draw(in: labelRect, withAttributes: labelAttributes)
+        // Draw name text
+        let nameRect = CGRect(
+            x: position.x - nameSize.width / 2,
+            y: labelY,
+            width: nameSize.width,
+            height: nameSize.height
+        )
+        nameText.draw(in: nameRect, withAttributes: labelAttributes)
+
+        // Draw distance text
+        let distanceRect = CGRect(
+            x: position.x - distanceSize.width / 2,
+            y: labelY + nameSize.height + 4 * scale,
+            width: distanceSize.width,
+            height: distanceSize.height
+        )
+        distanceText.draw(in: distanceRect, withAttributes: labelAttributes)
     }
 
     private func getWaypointColor(_ type: Waypoint.WaypointType) -> UIColor {
