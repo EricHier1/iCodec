@@ -400,8 +400,17 @@ class CameraViewModel: BaseViewModel {
                 captureSession.addInput(input)
                 captureSession.addOutput(photoOutput)
 
-                // Use simplest preset
-                captureSession.sessionPreset = .medium
+                // Use highest quality preset
+                if captureSession.canSetSessionPreset(.photo) {
+                    captureSession.sessionPreset = .photo
+                } else {
+                    captureSession.sessionPreset = .high
+                }
+
+                // Configure photo output for maximum quality
+                if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+                    photoOutput.isHighResolutionCaptureEnabled = true
+                }
 
                 captureSession.commitConfiguration()
 
@@ -458,8 +467,11 @@ class CameraViewModel: BaseViewModel {
             return
         }
 
-        // Use simplest photo settings
+        // Use high quality photo settings
         let settings = AVCapturePhotoSettings()
+
+        // Enable highest quality capture
+        settings.isHighResolutionPhotoEnabled = true
 
         // Only set flash if device supports it
         if let device = currentDevice, device.hasFlash {
@@ -471,8 +483,8 @@ class CameraViewModel: BaseViewModel {
         // Play camera shutter sound
         AudioServicesPlaySystemSound(1108) // Camera shutter sound
 
-        // Create delegate instance that will handle the photo
-        let delegate = PhotoCaptureDelegate()
+        // Create delegate instance that will handle the photo with current filter
+        let delegate = PhotoCaptureDelegate(filter: currentFilter)
         currentPhotoDelegate = delegate // Keep strong reference
         photoOutput.capturePhoto(with: settings, delegate: delegate)
     }
@@ -766,6 +778,12 @@ class CameraViewModel: BaseViewModel {
 
 
 private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    let filter: CameraViewModel.CameraFilter
+
+    init(filter: CameraViewModel.CameraFilter) {
+        self.filter = filter
+    }
+
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         print("📷 Photo output delegate called")
 
@@ -781,8 +799,54 @@ private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 
         print("📷 ✅ Photo captured successfully, size: \(imageData.count) bytes")
 
+        // Apply filter if needed
+        let finalImageData: Data
+        if filter == .nightVision {
+            finalImageData = applyNightVisionFilter(to: imageData) ?? imageData
+        } else {
+            finalImageData = imageData
+        }
+
         // Save to photo library
-        savePhotoToLibrary(imageData: imageData)
+        savePhotoToLibrary(imageData: finalImageData)
+    }
+
+    private func applyNightVisionFilter(to imageData: Data) -> Data? {
+        guard let uiImage = UIImage(data: imageData),
+              let ciImage = CIImage(image: uiImage) else {
+            return nil
+        }
+
+        let context = CIContext()
+
+        // Apply green tint for night vision effect
+        let colorMatrix = CIFilter(name: "CIColorMatrix")
+        colorMatrix?.setValue(ciImage, forKey: kCIInputImageKey)
+
+        // Green tint matrix - amplify green, reduce red and blue
+        colorMatrix?.setValue(CIVector(x: 0.3, y: 0, z: 0, w: 0), forKey: "inputRVector")
+        colorMatrix?.setValue(CIVector(x: 0.6, y: 1.2, z: 0, w: 0), forKey: "inputGVector")
+        colorMatrix?.setValue(CIVector(x: 0.1, y: 0, z: 0.3, w: 0), forKey: "inputBVector")
+        colorMatrix?.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
+
+        guard let outputImage = colorMatrix?.outputImage else {
+            return nil
+        }
+
+        // Increase brightness and contrast for night vision look
+        let colorControls = CIFilter(name: "CIColorControls")
+        colorControls?.setValue(outputImage, forKey: kCIInputImageKey)
+        colorControls?.setValue(0.3, forKey: kCIInputBrightnessKey) // Brighten
+        colorControls?.setValue(1.3, forKey: kCIInputContrastKey) // Increase contrast
+        colorControls?.setValue(1.2, forKey: kCIInputSaturationKey) // Boost saturation
+
+        guard let finalImage = colorControls?.outputImage,
+              let cgImage = context.createCGImage(finalImage, from: finalImage.extent) else {
+            return nil
+        }
+
+        let processedImage = UIImage(cgImage: cgImage)
+        return processedImage.jpegData(compressionQuality: 0.95)
     }
 
     private func savePhotoToLibrary(imageData: Data) {
