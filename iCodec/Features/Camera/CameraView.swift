@@ -495,8 +495,20 @@ class CameraViewModel: BaseViewModel {
         // Play camera shutter sound
         AudioServicesPlaySystemSound(1108) // Camera shutter sound
 
-        // Create delegate instance that will handle the photo with current filter
-        let delegate = PhotoCaptureDelegate(filter: currentFilter)
+        // Capture AR overlay data if AR mode is enabled
+        let arData: PhotoCaptureDelegate.AROverlayData?
+        if showARWaypoints, let location = userLocation, let heading = userHeading {
+            arData = PhotoCaptureDelegate.AROverlayData(
+                waypoints: SharedDataManager.shared.mapViewModel.waypoints,
+                userLocation: location,
+                heading: heading
+            )
+        } else {
+            arData = nil
+        }
+
+        // Create delegate instance that will handle the photo with current filter and AR overlay data
+        let delegate = PhotoCaptureDelegate(filter: currentFilter, arOverlayData: arData)
         currentPhotoDelegate = delegate // Keep strong reference
         photoOutput.capturePhoto(with: settings, delegate: delegate)
     }
@@ -791,9 +803,17 @@ class CameraViewModel: BaseViewModel {
 
 private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     let filter: CameraViewModel.CameraFilter
+    let arOverlayData: AROverlayData?
 
-    init(filter: CameraViewModel.CameraFilter) {
+    struct AROverlayData {
+        let waypoints: [Waypoint]
+        let userLocation: CLLocation
+        let heading: CLHeading
+    }
+
+    init(filter: CameraViewModel.CameraFilter, arOverlayData: AROverlayData? = nil) {
         self.filter = filter
+        self.arOverlayData = arOverlayData
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
@@ -811,21 +831,249 @@ private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 
         print("📷 ✅ Photo captured successfully, size: \(imageData.count) bytes")
 
+        // Fix orientation first
+        guard let uiImage = UIImage(data: imageData) else {
+            print("📷 ❌ Unable to create UIImage from data")
+            return
+        }
+
+        // Correct the orientation to match device orientation
+        let orientedImage = fixImageOrientation(uiImage)
+
         // Apply filter if needed
-        let finalImageData: Data
+        var processedImage: UIImage
         if filter == .nightVision {
-            finalImageData = applyNightVisionFilter(to: imageData) ?? imageData
+            processedImage = applyNightVisionFilterToImage(orientedImage) ?? orientedImage
         } else {
-            finalImageData = imageData
+            processedImage = orientedImage
+        }
+
+        // Add AR waypoint overlay if enabled
+        if let arData = arOverlayData {
+            processedImage = addARWaypointsToImage(processedImage, arData: arData)
+        }
+
+        // Convert back to data
+        guard let finalImageData = processedImage.jpegData(compressionQuality: 0.95) else {
+            print("📷 ❌ Unable to convert final image to data")
+            return
         }
 
         // Save to photo library
         savePhotoToLibrary(imageData: finalImageData)
     }
 
-    private func applyNightVisionFilter(to imageData: Data) -> Data? {
-        guard let uiImage = UIImage(data: imageData),
-              let ciImage = CIImage(image: uiImage) else {
+    private func fixImageOrientation(_ image: UIImage) -> UIImage {
+        // If the image is already in the correct orientation, return it
+        if image.imageOrientation == .up {
+            return image
+        }
+
+        // Create a graphics context and draw the image with the correct orientation
+        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+        image.draw(in: CGRect(origin: .zero, size: image.size))
+        let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        return normalizedImage ?? image
+    }
+
+    private func addARWaypointsToImage(_ image: UIImage, arData: AROverlayData) -> UIImage {
+        let imageSize = image.size
+        let scale = image.scale
+
+        UIGraphicsBeginImageContextWithOptions(imageSize, false, scale)
+
+        // Draw the original image
+        image.draw(at: .zero)
+
+        guard let context = UIGraphicsGetCurrentContext() else {
+            UIGraphicsEndImageContext()
+            return image
+        }
+
+        // Draw each visible waypoint
+        for waypoint in arData.waypoints {
+            if let position = calculateWaypointPosition(
+                waypoint: waypoint,
+                userLocation: arData.userLocation,
+                heading: arData.heading,
+                imageSize: imageSize
+            ) {
+                drawWaypointMarker(
+                    at: position,
+                    waypoint: waypoint,
+                    distance: arData.userLocation.distance(from: CLLocation(
+                        latitude: waypoint.coordinate.latitude,
+                        longitude: waypoint.coordinate.longitude
+                    )),
+                    context: context,
+                    imageSize: imageSize
+                )
+            }
+        }
+
+        let resultImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+
+        return resultImage
+    }
+
+    private func calculateWaypointPosition(
+        waypoint: Waypoint,
+        userLocation: CLLocation,
+        heading: CLHeading,
+        imageSize: CGSize
+    ) -> CGPoint? {
+        let waypointLocation = CLLocation(
+            latitude: waypoint.coordinate.latitude,
+            longitude: waypoint.coordinate.longitude
+        )
+
+        // Calculate bearing from user to waypoint
+        let bearing = calculateBearing(
+            from: userLocation.coordinate,
+            to: waypoint.coordinate
+        )
+
+        // Calculate relative angle
+        var relativeAngle = bearing - heading.trueHeading
+        if relativeAngle > 180 { relativeAngle -= 360 }
+        if relativeAngle < -180 { relativeAngle += 360 }
+
+        // Only show waypoints within ±60 degrees
+        let fovHorizontal: Double = 60.0
+        guard abs(relativeAngle) <= fovHorizontal else {
+            return nil
+        }
+
+        // Map angle to image position
+        let normalizedX = (relativeAngle + fovHorizontal) / (fovHorizontal * 2)
+        let x = normalizedX * imageSize.width
+
+        // Calculate vertical position based on distance
+        let distance = userLocation.distance(from: waypointLocation)
+        let maxDistance: Double = 5000
+        let distanceFactor = min(distance / maxDistance, 1.0)
+        let y = imageSize.height * (0.3 + distanceFactor * 0.4)
+
+        return CGPoint(x: x, y: y)
+    }
+
+    private func calculateBearing(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
+        let lat1 = from.latitude * .pi / 180
+        let lon1 = from.longitude * .pi / 180
+        let lat2 = to.latitude * .pi / 180
+        let lon2 = to.longitude * .pi / 180
+
+        let dLon = lon2 - lon1
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        var bearing = atan2(y, x) * 180 / .pi
+        bearing = (bearing + 360).truncatingRemainder(dividingBy: 360)
+
+        return bearing
+    }
+
+    private func drawWaypointMarker(
+        at position: CGPoint,
+        waypoint: Waypoint,
+        distance: Double,
+        context: CGContext,
+        imageSize: CGSize
+    ) {
+        // Scale factor for drawing on high-res image
+        let scale: CGFloat = 3.0
+
+        // Draw circle background
+        let circleRadius: CGFloat = 20 * scale
+        let circleRect = CGRect(
+            x: position.x - circleRadius,
+            y: position.y - circleRadius,
+            width: circleRadius * 2,
+            height: circleRadius * 2
+        )
+
+        // Set marker color based on waypoint type
+        let markerColor = getWaypointColor(waypoint.type)
+
+        // Fill circle with semi-transparent color
+        context.setFillColor(markerColor.withAlphaComponent(0.3).cgColor)
+        context.fillEllipse(in: circleRect)
+
+        // Stroke circle
+        context.setStrokeColor(markerColor.cgColor)
+        context.setLineWidth(2 * scale)
+        context.strokeEllipse(in: circleRect)
+
+        // Draw waypoint ID text in circle
+        let idAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedSystemFont(ofSize: 14 * scale, weight: .bold),
+            .foregroundColor: UIColor.white
+        ]
+        let idText = waypoint.id as NSString
+        let idSize = idText.size(withAttributes: idAttributes)
+        let idRect = CGRect(
+            x: position.x - idSize.width / 2,
+            y: position.y - idSize.height / 2,
+            width: idSize.width,
+            height: idSize.height
+        )
+        idText.draw(in: idRect, withAttributes: idAttributes)
+
+        // Draw waypoint name and distance below
+        let labelY = position.y + circleRadius + 8 * scale
+
+        // Draw background for text
+        let nameText = waypoint.name
+        let distanceText = formatDistance(distance)
+        let labelText = "\(nameText)\n\(distanceText)" as NSString
+
+        let labelAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedSystemFont(ofSize: 12 * scale, weight: .bold),
+            .foregroundColor: UIColor.white
+        ]
+
+        let labelSize = labelText.size(withAttributes: labelAttributes)
+        let labelRect = CGRect(
+            x: position.x - labelSize.width / 2,
+            y: labelY,
+            width: labelSize.width,
+            height: labelSize.height
+        )
+
+        // Background
+        let backgroundRect = labelRect.insetBy(dx: -8 * scale, dy: -4 * scale)
+        context.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+        context.fill(backgroundRect)
+
+        // Text
+        labelText.draw(in: labelRect, withAttributes: labelAttributes)
+    }
+
+    private func getWaypointColor(_ type: Waypoint.WaypointType) -> UIColor {
+        switch type {
+        case .objective:
+            return UIColor.systemRed
+        case .checkpoint:
+            return UIColor.systemOrange
+        case .intel:
+            return UIColor.systemBlue
+        case .extraction:
+            return UIColor.systemGreen
+        }
+    }
+
+    private func formatDistance(_ meters: Double) -> String {
+        if meters < 1000 {
+            return String(format: "%.0f m", meters)
+        } else {
+            return String(format: "%.1f km", meters / 1000)
+        }
+    }
+
+    private func applyNightVisionFilterToImage(_ image: UIImage) -> UIImage? {
+        guard let ciImage = CIImage(image: image) else {
             return nil
         }
 
@@ -857,8 +1105,7 @@ private class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             return nil
         }
 
-        let processedImage = UIImage(cgImage: cgImage)
-        return processedImage.jpegData(compressionQuality: 0.95)
+        return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
     }
 
     private func savePhotoToLibrary(imageData: Data) {

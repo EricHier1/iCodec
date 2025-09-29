@@ -288,6 +288,33 @@ struct MissionCard: View {
                 .frame(height: 8)
             }
 
+            // Navigate button for missions with waypoints
+            if isActive && !isCompleted && mission.waypointId != nil {
+                HStack {
+                    Button(action: {
+                        navigateToWaypoint()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 12))
+                            Text("NAVIGATE TO WAYPOINT")
+                                .font(.system(size: 11, design: .monospaced))
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(themeManager.primaryColor)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(themeManager.primaryColor.opacity(0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(themeManager.primaryColor, lineWidth: 1.5)
+                        )
+                        .cornerRadius(6)
+                    }
+                }
+            }
+
         }
         .padding(14)
         .background(
@@ -314,6 +341,22 @@ struct MissionCard: View {
                 .stroke(isActive ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.3), lineWidth: isActive ? 2 : 1)
         )
         .cornerRadius(10)
+    }
+
+    private func navigateToWaypoint() {
+        guard let waypointId = mission.waypointId else { return }
+
+        // Find the waypoint
+        if let waypoint = SharedDataManager.shared.mapViewModel.waypoints.first(where: { $0.id == waypointId }) {
+            // Center map on waypoint
+            SharedDataManager.shared.mapViewModel.centerOnCoordinate(waypoint.coordinate)
+
+            // Switch to Map tab
+            SharedDataManager.shared.appCoordinator?.currentModule = .map
+
+            // Play navigation sound
+            TacticalSoundPlayer.playNavigation()
+        }
     }
 
     private func calculateWaypointDistance() -> String? {

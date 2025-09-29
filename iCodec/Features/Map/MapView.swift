@@ -391,7 +391,11 @@ class MapViewModel: BaseViewModel {
         )
     )
 
-    @Published var waypoints: [Waypoint] = []
+    @Published var waypoints: [Waypoint] = [] {
+        didSet {
+            saveWaypoints()
+        }
+    }
     @Published var currentMode: MapMode = .dark
     @Published var scaleText = "≈1.1 km"
     @Published var userLocation: CLLocationCoordinate2D?
@@ -407,6 +411,7 @@ class MapViewModel: BaseViewModel {
     private var locationDelegate: MapLocationDelegate?
     private var locationTimeout: Timer?
     private var isProgrammaticUpdate = false
+    private let waypointsKey = "savedWaypoints"
 
     enum MapMode: String, CaseIterable {
         case tactical = "TACTICAL"
@@ -428,7 +433,7 @@ class MapViewModel: BaseViewModel {
     override init() {
         super.init()
         setupLocationManager()
-        generateSampleWaypoints()
+        loadWaypoints()
         updateScaleText(for: region)
         requestLocationPermission()
     }
@@ -564,6 +569,20 @@ class MapViewModel: BaseViewModel {
         }
     }
 
+    func centerOnCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        isProgrammaticUpdate = true
+        withAnimation(.easeInOut(duration: 0.5)) {
+            let newRegion = MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+            region = newRegion
+            cameraPosition = .region(newRegion)
+            updateMapCenter()
+            updateScaleText(for: newRegion)
+        }
+    }
+
     func toggleFollowUser() {
         isFollowingUser.toggle()
         if isFollowingUser {
@@ -666,15 +685,54 @@ class MapViewModel: BaseViewModel {
     private func createSampleWaypointsNearLocation(_ location: CLLocationCoordinate2D) {
         // No sample waypoints - user will create their own
     }
+
+    private func saveWaypoints() {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(waypoints)
+            UserDefaults.standard.set(data, forKey: waypointsKey)
+            print("MapViewModel: Saved \(waypoints.count) waypoints")
+        } catch {
+            print("MapViewModel: Failed to save waypoints: \(error)")
+        }
+    }
+
+    private func loadWaypoints() {
+        guard let data = UserDefaults.standard.data(forKey: waypointsKey) else {
+            print("MapViewModel: No saved waypoints found")
+            return
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            waypoints = try decoder.decode([Waypoint].self, from: data)
+            print("MapViewModel: Loaded \(waypoints.count) waypoints")
+        } catch {
+            print("MapViewModel: Failed to load waypoints: \(error)")
+        }
+    }
 }
 
-struct Waypoint: Identifiable {
+struct Waypoint: Identifiable, Codable {
     let id: String
     var name: String
-    let coordinate: CLLocationCoordinate2D
+    let latitude: Double
+    let longitude: Double
     let type: WaypointType
 
-    enum WaypointType {
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+
+    init(id: String, name: String, coordinate: CLLocationCoordinate2D, type: WaypointType) {
+        self.id = id
+        self.name = name
+        self.latitude = coordinate.latitude
+        self.longitude = coordinate.longitude
+        self.type = type
+    }
+
+    enum WaypointType: String, Codable {
         case objective, checkpoint, intel, extraction
     }
 }
