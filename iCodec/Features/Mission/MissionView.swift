@@ -288,22 +288,6 @@ struct MissionCard: View {
                 .frame(height: 8)
             }
 
-            // Action buttons for active missions
-            if isActive && !isCompleted {
-                HStack(spacing: 8) {
-                    if mission.waypointId != nil {
-                        actionButton(title: "NAVIGATE", icon: "location.fill", action: {
-                            // TODO: Navigate to waypoint
-                        })
-                    }
-
-                    actionButton(title: "DETAILS", icon: "info.circle.fill", action: {
-                        // Handled by parent tap gesture
-                    })
-
-                    Spacer()
-                }
-            }
         }
         .padding(14)
         .background(
@@ -330,27 +314,6 @@ struct MissionCard: View {
                 .stroke(isActive ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.3), lineWidth: isActive ? 2 : 1)
         )
         .cornerRadius(10)
-    }
-
-    private func actionButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                Text(title)
-                    .font(.system(size: 10, design: .monospaced))
-                    .fontWeight(.semibold)
-            }
-            .foregroundColor(themeManager.primaryColor)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(themeManager.primaryColor.opacity(0.15))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(themeManager.primaryColor, lineWidth: 1)
-            )
-            .cornerRadius(4)
-        }
     }
 
     private func calculateWaypointDistance() -> String? {

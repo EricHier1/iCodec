@@ -2,7 +2,7 @@ import SwiftUI
 
 struct RecordingRow: View {
     let recording: VoiceRecording
-    let viewModel: AudioViewModel
+    @ObservedObject var viewModel: AudioViewModel
     @EnvironmentObject private var themeManager: ThemeManager
     @State private var isEditing = false
     @State private var editingDescription = ""
