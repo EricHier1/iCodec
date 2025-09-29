@@ -319,7 +319,6 @@ struct ActiveMissionControls: View {
                     TacticalSoundPlayer.playAction()
                     viewModel.completeMission(mission)
                 }, style: .primary, size: .small)
-                .disabled(progressValue < 100)
 
                 Spacer()
             }
