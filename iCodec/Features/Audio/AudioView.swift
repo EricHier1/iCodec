@@ -95,6 +95,13 @@ struct AudioView: View {
                         }
                     }
 
+                    // Spectrum Analyzer
+                    if viewModel.isPlaying {
+                        SpectrumAnalyzerView(levels: viewModel.spectrumLevels, themeManager: themeManager)
+                            .frame(height: 60)
+                            .padding(.top, 8)
+                    }
+
                     // Controls
                     HStack(spacing: 16) {
                         CodecButton(title: "PREV", action: {
@@ -454,5 +461,40 @@ struct CustomStationRow: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Spectrum Analyzer
+struct SpectrumAnalyzerView: View {
+    let levels: [CGFloat]
+    let themeManager: ThemeManager
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 2) {
+                ForEach(0..<levels.count, id: \.self) { index in
+                    let barHeight = max(4, geometry.size.height * levels[index])
+                    VStack {
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(barColor(for: index, level: levels[index]))
+                            .frame(width: (geometry.size.width - CGFloat(levels.count - 1) * 2) / CGFloat(levels.count))
+                            .frame(height: barHeight)
+                    }
+                }
+            }
+        }
+        .background(themeManager.surfaceColor.opacity(0.2))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1)
+        )
+        .cornerRadius(4)
+    }
+
+    private func barColor(for index: Int, level: CGFloat) -> Color {
+        // Tactical green spectrum - brighter when louder
+        let brightness = 0.4 + (level * 0.6)
+        return themeManager.primaryColor.opacity(brightness)
     }
 }

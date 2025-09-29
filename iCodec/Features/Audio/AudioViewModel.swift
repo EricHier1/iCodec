@@ -27,6 +27,7 @@ class AudioViewModel: BaseViewModel {
     @Published var customStationError: String?
     @Published var recordingName = ""
     fileprivate var currentRecordingName = ""
+    @Published var spectrumLevels: [CGFloat] = Array(repeating: 0, count: 20)
 
     private var audioPlayer: AVAudioPlayer?
     private var radioPlayer: AVPlayer?
@@ -39,6 +40,7 @@ class AudioViewModel: BaseViewModel {
     private var playerObserver: Any?
     private var cancellables = Set<AnyCancellable>()
     private var trackInfoTimer: Timer?
+    private var spectrumTimer: Timer?
     nonisolated static func getCachedDuration(for url: URL) -> String? {
         return DurationCache.shared.getDuration(for: url)
     }
@@ -124,12 +126,16 @@ class AudioViewModel: BaseViewModel {
 
             // Use playback category for better streaming performance when not recording
             if !isRecording {
-                try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowAirPlay, .mixWithOthers])
+                // Enable background audio playback
+                try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowAirPlay])
             } else {
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP, .allowAirPlay])
             }
 
             try session.setActive(true)
+
+            // Setup remote control commands for lock screen
+            setupRemoteCommandCenter()
 
             // Add notification observers for audio session interruptions
             NotificationCenter.default.addObserver(
@@ -149,6 +155,70 @@ class AudioViewModel: BaseViewModel {
         } catch {
             handleError(error)
         }
+    }
+
+    private func setupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // Play command
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            if self?.isPlaying == false {
+                self?.playRadio()
+            }
+            return .success
+        }
+
+        // Pause command
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            if self?.isPlaying == true {
+                self?.stopRadio()
+            }
+            return .success
+        }
+
+        // Toggle play/pause
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.toggleRadio()
+            return .success
+        }
+
+        // Next station
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            self?.nextStation()
+            return .success
+        }
+
+        // Previous station
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            self?.previousStation()
+            return .success
+        }
+    }
+
+    private func updateNowPlayingInfo() {
+        var nowPlayingInfo = [String: Any]()
+
+        if let station = currentStation {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = station.name
+            nowPlayingInfo[MPMediaItemPropertyArtist] = currentlyPlaying
+            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "FM \(station.frequency)"
+
+            // Set playback rate
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+
+            // Add app icon as artwork if available
+            if let appIcon = UIImage(named: "AppIcon") {
+                let artwork = MPMediaItemArtwork(boundsSize: appIcon.size) { _ in appIcon }
+                nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+            }
+        }
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
     @objc private func handleAudioSessionInterruption(_ notification: Notification) {
@@ -223,6 +293,9 @@ class AudioViewModel: BaseViewModel {
         currentlyPlaying = "CONNECTING..."
         signalStrength = 1
 
+        // Update Now Playing info for lock screen
+        updateNowPlayingInfo()
+
         // Create AVPlayer for streaming
         radioPlayer = AVPlayer(url: url)
         radioPlayer?.volume = Float(volume)
@@ -237,6 +310,7 @@ class AudioViewModel: BaseViewModel {
                         self?.currentlyPlaying = "STREAMING: \(station.name)"
                     }
                     self?.signalStrength = 4
+                    self?.updateNowPlayingInfo()
                     player.play()
                 case .failed:
                     print("🔊 Radio player failed with error: \(player.error?.localizedDescription ?? "Unknown error")")
@@ -262,6 +336,9 @@ class AudioViewModel: BaseViewModel {
                 }
             }
         }
+
+        // Start spectrum animation
+        startSpectrumAnimation()
     }
 
     private func handleRadioError(_ error: Error?) {
@@ -306,9 +383,15 @@ class AudioViewModel: BaseViewModel {
         trackInfoTimer?.invalidate()
         trackInfoTimer = nil
 
+        // Stop spectrum animation
+        stopSpectrumAnimation()
+
         isPlaying = false
         currentlyPlaying = "STANDBY"
         signalStrength = 0
+
+        // Clear Now Playing info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
 
         print("🔊 Radio stopped successfully")
     }
@@ -325,6 +408,7 @@ class AudioViewModel: BaseViewModel {
             "Total Eclipse of the Heart - Bonnie Tyler"
         ]
         currentlyPlaying = "NOW PLAYING: \(tracks.randomElement() ?? "Unknown Track")"
+        updateNowPlayingInfo()
     }
 
     func nextStation() {
@@ -781,6 +865,42 @@ class AudioViewModel: BaseViewModel {
 
         // Stop any voice playback
         stopRecordingPlayback()
+    }
+
+    private func startSpectrumAnimation() {
+        spectrumTimer?.invalidate()
+        spectrumTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateSpectrumLevels()
+            }
+        }
+    }
+
+    private func stopSpectrumAnimation() {
+        spectrumTimer?.invalidate()
+        spectrumTimer = nil
+        spectrumLevels = Array(repeating: 0, count: 20)
+    }
+
+    private func updateSpectrumLevels() {
+        // Simulate spectrum analyzer levels with realistic audio patterns
+        for i in 0..<20 {
+            // Create frequency-dependent behavior (bass higher, treble lower)
+            let bassBoost = i < 5 ? 1.3 : 1.0
+            let trebleReduce = i > 15 ? 0.7 : 1.0
+
+            // Random variation with some smoothing
+            let targetLevel = CGFloat.random(in: 0.2...0.95) * bassBoost * trebleReduce
+
+            // Smooth transition
+            let currentLevel = spectrumLevels[i]
+            spectrumLevels[i] = currentLevel + (targetLevel - currentLevel) * 0.3
+
+            // Add occasional peaks
+            if Double.random(in: 0...1) > 0.92 {
+                spectrumLevels[i] = min(1.0, spectrumLevels[i] * 1.4)
+            }
+        }
     }
 
 }
