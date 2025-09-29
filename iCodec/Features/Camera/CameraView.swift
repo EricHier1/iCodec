@@ -3,6 +3,7 @@ import SwiftUI
 import Photos
 import AudioToolbox
 import Combine
+import CoreLocation
 
 struct CameraView: View {
     @StateObject private var viewModel = CameraViewModel()
@@ -38,6 +39,12 @@ struct CameraView: View {
                         filterOverlay
                             .ignoresSafeArea()
                             .allowsHitTesting(false)
+                    )
+                    .overlay(
+                        ARWaypointOverlay(viewModel: viewModel, themeManager: themeManager)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .opacity(viewModel.showARWaypoints ? 1 : 0)
                     )
             } else if !viewModel.isAuthorized {
                 // Permission not granted
@@ -213,6 +220,16 @@ struct CameraView: View {
             }
             .disabled(!viewModel.cameraAvailable)
 
+            // AR Waypoints toggle button
+            CodecButton(
+                title: viewModel.showARWaypoints ? "AR ON" : "AR OFF",
+                action: {
+                    TacticalSoundPlayer.playNavigation()
+                    viewModel.toggleARWaypoints()
+                },
+                style: viewModel.showARWaypoints ? .primary : .secondary,
+                size: .medium
+            )
         }
         .padding(.bottom, 30)
     }
@@ -284,8 +301,13 @@ class CameraViewModel: BaseViewModel {
     @Published @MainActor var currentFilter: CameraFilter = .normal
     @Published @MainActor var exposureBias: Float = 0.0
     @Published @MainActor var isoValue: Float = 0.0
+    @Published @MainActor var showARWaypoints = false
+    @Published @MainActor var userLocation: CLLocation?
+    @Published @MainActor var userHeading: CLHeading?
 
     private var baseZoomLevel: CGFloat = 1.0
+    private var locationManager: CLLocationManager?
+    private var locationDelegate: CameraLocationDelegate?
 
     nonisolated let captureSession = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
@@ -465,6 +487,46 @@ class CameraViewModel: BaseViewModel {
             // No camera modifications - just UI overlay changes
             objectWillChange.send()
         }
+    }
+
+    @MainActor
+    func toggleARWaypoints() {
+        showARWaypoints.toggle()
+
+        if showARWaypoints {
+            setupLocationTracking()
+        } else {
+            stopLocationTracking()
+        }
+    }
+
+    @MainActor
+    private func setupLocationTracking() {
+        locationManager = CLLocationManager()
+        locationDelegate = CameraLocationDelegate(
+            onLocationUpdate: { [weak self] location in
+                Task { @MainActor in
+                    self?.userLocation = location
+                }
+            },
+            onHeadingUpdate: { [weak self] heading in
+                Task { @MainActor in
+                    self?.userHeading = heading
+                }
+            }
+        )
+        locationManager?.delegate = locationDelegate
+        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager?.startUpdatingLocation()
+        locationManager?.startUpdatingHeading()
+    }
+
+    @MainActor
+    private func stopLocationTracking() {
+        locationManager?.stopUpdatingLocation()
+        locationManager?.stopUpdatingHeading()
+        locationManager = nil
+        locationDelegate = nil
     }
 
     // Removed night vision hardware modifications to prevent crashes
@@ -808,3 +870,188 @@ struct NightVisionOverlay: View {
 }
 
 // Removed StaticNoisePattern to prevent any potential animation issues
+
+// MARK: - AR Waypoint Overlay
+struct ARWaypointOverlay: View {
+    @ObservedObject var viewModel: CameraViewModel
+    let themeManager: ThemeManager
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                ForEach(SharedDataManager.shared.mapViewModel.waypoints) { waypoint in
+                    if let position = calculateWaypointScreenPosition(
+                        waypoint: waypoint,
+                        userLocation: viewModel.userLocation,
+                        heading: viewModel.userHeading,
+                        screenSize: geometry.size
+                    ) {
+                        ARWaypointMarker(
+                            waypoint: waypoint,
+                            distance: calculateDistance(to: waypoint),
+                            themeManager: themeManager
+                        )
+                        .position(position)
+                    }
+                }
+            }
+        }
+    }
+
+    private func calculateDistance(to waypoint: Waypoint) -> Double {
+        guard let userLocation = viewModel.userLocation else { return 0 }
+        let waypointLocation = CLLocation(
+            latitude: waypoint.coordinate.latitude,
+            longitude: waypoint.coordinate.longitude
+        )
+        return userLocation.distance(from: waypointLocation)
+    }
+
+    private func calculateWaypointScreenPosition(
+        waypoint: Waypoint,
+        userLocation: CLLocation?,
+        heading: CLHeading?,
+        screenSize: CGSize
+    ) -> CGPoint? {
+        guard let userLocation = userLocation,
+              let heading = heading else {
+            return nil
+        }
+
+        let waypointLocation = CLLocation(
+            latitude: waypoint.coordinate.latitude,
+            longitude: waypoint.coordinate.longitude
+        )
+
+        // Calculate bearing from user to waypoint
+        let bearing = calculateBearing(
+            from: userLocation.coordinate,
+            to: waypoint.coordinate
+        )
+
+        // Calculate relative angle (difference between device heading and waypoint bearing)
+        var relativeAngle = bearing - heading.trueHeading
+        if relativeAngle > 180 { relativeAngle -= 360 }
+        if relativeAngle < -180 { relativeAngle += 360 }
+
+        // Only show waypoints within ±60 degrees of view
+        let fovHorizontal: Double = 60.0
+        guard abs(relativeAngle) <= fovHorizontal else {
+            return nil
+        }
+
+        // Map angle to screen position (-60 to +60 degrees maps to 0 to screenWidth)
+        let normalizedX = (relativeAngle + fovHorizontal) / (fovHorizontal * 2)
+        let x = normalizedX * screenSize.width
+
+        // Calculate vertical position based on distance
+        // Closer waypoints appear lower on screen, farther ones higher
+        let distance = userLocation.distance(from: waypointLocation)
+        let maxDistance: Double = 5000 // 5km
+        let distanceFactor = min(distance / maxDistance, 1.0)
+        let y = screenSize.height * (0.3 + distanceFactor * 0.4) // Position between 30-70% of screen height
+
+        return CGPoint(x: x, y: y)
+    }
+
+    private func calculateBearing(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
+        let lat1 = from.latitude * .pi / 180
+        let lon1 = from.longitude * .pi / 180
+        let lat2 = to.latitude * .pi / 180
+        let lon2 = to.longitude * .pi / 180
+
+        let dLon = lon2 - lon1
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        var bearing = atan2(y, x) * 180 / .pi
+        bearing = (bearing + 360).truncatingRemainder(dividingBy: 360)
+
+        return bearing
+    }
+}
+
+struct ARWaypointMarker: View {
+    let waypoint: Waypoint
+    let distance: Double
+    let themeManager: ThemeManager
+
+    var body: some View {
+        VStack(spacing: 4) {
+            // Waypoint icon
+            ZStack {
+                Circle()
+                    .fill(markerColor.opacity(0.3))
+                    .frame(width: 40, height: 40)
+
+                Circle()
+                    .stroke(markerColor, lineWidth: 2)
+                    .frame(width: 40, height: 40)
+
+                Text(waypoint.id)
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(.white)
+                    .fontWeight(.bold)
+            }
+            .shadow(color: .black.opacity(0.5), radius: 4)
+
+            // Waypoint label
+            VStack(spacing: 2) {
+                Text(waypoint.name)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.white)
+                    .fontWeight(.bold)
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+
+                Text(formatDistance(distance))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(themeManager.accentColor)
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(4)
+        }
+    }
+
+    private var markerColor: Color {
+        switch waypoint.type {
+        case .objective:
+            return themeManager.errorColor
+        case .checkpoint:
+            return themeManager.warningColor
+        case .intel:
+            return themeManager.accentColor
+        case .extraction:
+            return themeManager.successColor
+        }
+    }
+
+    private func formatDistance(_ meters: Double) -> String {
+        if meters < 1000 {
+            return String(format: "%.0f m", meters)
+        } else {
+            return String(format: "%.1f km", meters / 1000)
+        }
+    }
+}
+
+// MARK: - Location Delegate
+private class CameraLocationDelegate: NSObject, CLLocationManagerDelegate {
+    let onLocationUpdate: (CLLocation) -> Void
+    let onHeadingUpdate: (CLHeading) -> Void
+
+    init(onLocationUpdate: @escaping (CLLocation) -> Void, onHeadingUpdate: @escaping (CLHeading) -> Void) {
+        self.onLocationUpdate = onLocationUpdate
+        self.onHeadingUpdate = onHeadingUpdate
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        onLocationUpdate(location)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        onHeadingUpdate(newHeading)
+    }
+}
