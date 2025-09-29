@@ -643,6 +643,7 @@ class AudioViewModel: BaseViewModel {
             // Update state immediately on main thread (since we're already @MainActor)
             isPlayingRecording = true
             currentPlayingRecording = recording
+            objectWillChange.send() // Force immediate UI update
             print("🎵 Set isPlayingRecording = \(isPlayingRecording), currentPlayingRecording = \(currentPlayingRecording?.id ?? UUID())")
         } catch {
             print("🎵 Error playing recording: \(error)")
@@ -658,6 +659,7 @@ class AudioViewModel: BaseViewModel {
         // Update state immediately (since we're already @MainActor)
         isPlayingRecording = false
         currentPlayingRecording = nil
+        objectWillChange.send() // Force immediate UI update
         print("🎵 Set isPlayingRecording = \(isPlayingRecording), currentPlayingRecording = nil")
     }
 
@@ -937,6 +939,8 @@ extension AudioDelegateHandler: AVAudioPlayerDelegate {
         Task { @MainActor in
             viewModel?.isPlayingRecording = false
             viewModel?.currentPlayingRecording = nil
+            viewModel?.objectWillChange.send() // Force UI update when playback finishes
+            print("🎵 Playback finished, cleared state")
         }
     }
 }
@@ -948,11 +952,15 @@ struct RadioStation: Identifiable, Codable {
     let frequency: String
 }
 
-struct VoiceRecording: Identifiable, Codable {
+struct VoiceRecording: Identifiable, Codable, Equatable {
     let id: UUID
     let url: URL
     let date: Date
     var description: String
+
+    static func == (lhs: VoiceRecording, rhs: VoiceRecording) -> Bool {
+        return lhs.id == rhs.id
+    }
 
     var duration: String {
         // Use cached duration if available
