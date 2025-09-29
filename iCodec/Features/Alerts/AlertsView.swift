@@ -17,17 +17,10 @@ struct AlertsView: View {
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    CodecButton(title: "TEST", action: {
-                        TacticalSoundPlayer.playAction()
-                        viewModel.testAlert()
-                    }, style: .secondary, size: .small)
-
-                    CodecButton(title: "SCHEDULE", action: {
-                        TacticalSoundPlayer.playNavigation()
-                        viewModel.showScheduleDialog = true
-                    }, style: .primary, size: .medium)
-                }
+                CodecButton(title: "SCHEDULE", action: {
+                    TacticalSoundPlayer.playNavigation()
+                    viewModel.showScheduleDialog = true
+                }, style: .primary, size: .medium)
             }
             .padding(.horizontal, 16)
 

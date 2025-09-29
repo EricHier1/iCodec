@@ -197,8 +197,21 @@ struct MapView: View {
     }
 
     private func formattedAltitude() -> String {
-        guard let altitude = viewModel.lastKnownLocation?.altitude else { return "—" }
-        return String(format: "%.0f m", altitude)
+        // Only show altitude if we're at or very close to user location
+        guard let userLoc = viewModel.userLocation,
+              let altitude = viewModel.lastKnownLocation?.altitude else {
+            return "—"
+        }
+
+        // Check if map center is close to user location (within ~100m)
+        let distance = CLLocation(latitude: viewModel.mapCenter.latitude, longitude: viewModel.mapCenter.longitude)
+            .distance(from: CLLocation(latitude: userLoc.latitude, longitude: userLoc.longitude))
+
+        if distance < 100 {
+            return String(format: "%.0f m", altitude)
+        } else {
+            return "—"
+        }
     }
 
     private func formattedAccuracy() -> String {
@@ -393,6 +406,7 @@ class MapViewModel: BaseViewModel {
     private let locationManager = CLLocationManager()
     private var locationDelegate: MapLocationDelegate?
     private var locationTimeout: Timer?
+    private var isProgrammaticUpdate = false
 
     enum MapMode: String, CaseIterable {
         case tactical = "TACTICAL"
@@ -505,6 +519,7 @@ class MapViewModel: BaseViewModel {
             }
         } else if isFollowingUser {
             // Continue following user location updates
+            isProgrammaticUpdate = true
             withAnimation(.easeInOut(duration: 0.3)) {
                 let newRegion = MKCoordinateRegion(
                     center: location.coordinate,
@@ -520,6 +535,7 @@ class MapViewModel: BaseViewModel {
 
     func centerOnUser() {
         if let location = lastKnownLocation ?? locationManager.location {
+            isProgrammaticUpdate = true
             withAnimation(.easeInOut(duration: 0.5)) {
                 let newRegion = MKCoordinateRegion(
                     center: location.coordinate,
@@ -531,6 +547,7 @@ class MapViewModel: BaseViewModel {
                 updateScaleText(for: newRegion)
             }
         } else if let userLoc = userLocation {
+            isProgrammaticUpdate = true
             withAnimation(.easeInOut(duration: 0.5)) {
                 let newRegion = MKCoordinateRegion(
                     center: userLoc,
@@ -555,10 +572,11 @@ class MapViewModel: BaseViewModel {
     }
 
     func updateCameraRegion(_ region: MKCoordinateRegion) {
-        // Disable following when user manually moves the map
-        if isFollowingUser {
+        // Only disable following when user manually moves the map, not when we programmatically update it
+        if isFollowingUser && !isProgrammaticUpdate {
             isFollowingUser = false
         }
+        isProgrammaticUpdate = false
         self.region = region
         self.mapCenter = region.center
         self.cameraPosition = .region(region)
@@ -570,6 +588,7 @@ class MapViewModel: BaseViewModel {
     }
 
     func zoomIn() {
+        isProgrammaticUpdate = true
         withAnimation(.easeInOut(duration: 0.3)) {
             region.span.latitudeDelta = max(region.span.latitudeDelta * 0.5, 0.0005)
             region.span.longitudeDelta = max(region.span.longitudeDelta * 0.5, 0.0005)
@@ -580,6 +599,7 @@ class MapViewModel: BaseViewModel {
     }
 
     func zoomOut() {
+        isProgrammaticUpdate = true
         withAnimation(.easeInOut(duration: 0.3)) {
             region.span.latitudeDelta = min(region.span.latitudeDelta * 2.0, 10)
             region.span.longitudeDelta = min(region.span.longitudeDelta * 2.0, 10)
