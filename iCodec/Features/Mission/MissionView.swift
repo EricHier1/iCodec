@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreData
+import CoreLocation
 
 struct MissionView: View {
     @ObservedObject private var viewModel = SharedDataManager.shared.missionViewModel
@@ -197,91 +198,199 @@ struct MissionCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(mission.name ?? "Untitled Mission")
-                    .font(.system(size: 14, design: .monospaced))
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with title and priority
+            HStack(alignment: .top, spacing: 8) {
+                // Mission icon
+                Image(systemName: isCompleted ? "checkmark.circle.fill" : "target")
+                    .font(.system(size: 20))
                     .foregroundColor(isCompleted ? themeManager.successColor : (isActive ? themeManager.accentColor : themeManager.primaryColor))
-                    .fontWeight(.bold)
-                    .strikethrough(isCompleted)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    // Title - Larger and more prominent
+                    Text(mission.name ?? "Untitled Mission")
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(isCompleted ? themeManager.successColor : (isActive ? themeManager.accentColor : themeManager.primaryColor))
+                        .fontWeight(.bold)
+                        .strikethrough(isCompleted)
+
+                    // Waypoint location with distance if available
+                    if let waypointName = mission.waypointName, !waypointName.isEmpty,
+                       let waypointId = mission.waypointId {
+                        HStack(spacing: 6) {
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(themeManager.accentColor)
+
+                            Text("\(waypointName) (\(waypointId))")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(themeManager.accentColor)
+
+                            if let distance = calculateWaypointDistance() {
+                                Text("•")
+                                    .foregroundColor(themeManager.textColor.opacity(0.5))
+                                Text(distance)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(themeManager.warningColor)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                }
 
                 Spacer()
 
+                // Priority badge - Larger and more visible
                 priorityIndicator
             }
 
-            if let description = mission.missionDescription, !description.isEmpty {
-                Text(description)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(themeManager.textColor.opacity(0.8))
-                    .lineLimit(2)
-            }
-
-            // Waypoint location
-            if let waypointName = mission.waypointName, !waypointName.isEmpty,
-               let waypointId = mission.waypointId {
-                HStack(spacing: 4) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(themeManager.accentColor)
-
-                    Text("\(waypointName) (\(waypointId))")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(themeManager.accentColor)
-                }
-            }
-
-            // Progress bar
-            VStack(alignment: .leading, spacing: 4) {
+            // Progress bar - Bigger and more prominent
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("PROGRESS")
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(themeManager.textColor.opacity(0.7))
+                        .fontWeight(.semibold)
 
                     Spacer()
 
                     Text("\(Int(mission.progress))%")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(themeManager.primaryColor)
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(progressColor)
+                        .fontWeight(.bold)
                 }
 
+                // Enhanced progress bar with segments
                 GeometryReader { geometry in
                     let fraction = max(0, min(1, mission.progress / 100))
                     let width = max(CGFloat(fraction) * geometry.size.width, 2)
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(themeManager.surfaceColor)
+                        // Background with grid pattern
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(themeManager.surfaceColor.opacity(0.5))
 
-                        RoundedRectangle(cornerRadius: 2)
+                        // Progress fill with gradient
+                        RoundedRectangle(cornerRadius: 4)
                             .fill(progressColor)
                             .frame(width: width)
+
+                        // Segment markers
+                        HStack(spacing: 0) {
+                            ForEach(0..<4) { index in
+                                Rectangle()
+                                    .fill(themeManager.backgroundColor.opacity(0.3))
+                                    .frame(width: 1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                 }
-                .frame(height: 4)
+                .frame(height: 8)
+            }
+
+            // Action buttons for active missions
+            if isActive && !isCompleted {
+                HStack(spacing: 8) {
+                    if mission.waypointId != nil {
+                        actionButton(title: "NAVIGATE", icon: "location.fill", action: {
+                            // TODO: Navigate to waypoint
+                        })
+                    }
+
+                    actionButton(title: "DETAILS", icon: "info.circle.fill", action: {
+                        // Handled by parent tap gesture
+                    })
+
+                    Spacer()
+                }
             }
         }
-        .padding(12)
-        .background(isActive ? themeManager.primaryColor.opacity(0.1) : themeManager.surfaceColor.opacity(0.2))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isActive ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.3), lineWidth: 1)
+        .padding(14)
+        .background(
+            ZStack {
+                // Base background
+                (isActive ? themeManager.primaryColor.opacity(0.15) : themeManager.surfaceColor.opacity(0.25))
+
+                // Subtle corner accent
+                if isActive {
+                    VStack {
+                        HStack {
+                            Rectangle()
+                                .fill(themeManager.primaryColor.opacity(0.4))
+                                .frame(width: 40, height: 2)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                }
+            }
         )
-        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isActive ? themeManager.primaryColor : themeManager.primaryColor.opacity(0.3), lineWidth: isActive ? 2 : 1)
+        )
+        .cornerRadius(10)
+    }
+
+    private func actionButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                Text(title)
+                    .font(.system(size: 10, design: .monospaced))
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(themeManager.primaryColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(themeManager.primaryColor.opacity(0.15))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(themeManager.primaryColor, lineWidth: 1)
+            )
+            .cornerRadius(4)
+        }
+    }
+
+    private func calculateWaypointDistance() -> String? {
+        guard let userCoordinate = SharedDataManager.shared.mapViewModel.userLocation,
+              mission.latitude != 0 && mission.longitude != 0 else {
+            return nil
+        }
+
+        let userLocation = CLLocation(latitude: userCoordinate.latitude, longitude: userCoordinate.longitude)
+        let waypointLocation = CLLocation(latitude: mission.latitude, longitude: mission.longitude)
+        let distance = userLocation.distance(from: waypointLocation)
+
+        if distance < 1000 {
+            return String(format: "%.0f m", distance)
+        } else {
+            return String(format: "%.1f km", distance / 1000)
+        }
     }
 
     private var priorityIndicator: some View {
         let priority = Priority(rawValue: mission.priority ?? "medium") ?? .medium
-        return Text(priority.rawValue.uppercased())
-            .font(.system(size: 8, design: .monospaced))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(priority.color.opacity(0.2))
-            .foregroundColor(priority.color)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(priority.color, lineWidth: 1)
-            )
-            .cornerRadius(4)
+        return HStack(spacing: 4) {
+            // Priority icon
+            Circle()
+                .fill(priority.color)
+                .frame(width: 8, height: 8)
+
+            Text(priority.rawValue.uppercased())
+                .font(.system(size: 10, design: .monospaced))
+                .fontWeight(.bold)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(priority.color.opacity(0.2))
+        .foregroundColor(priority.color)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(priority.color, lineWidth: 1.5)
+        )
+        .cornerRadius(6)
     }
 
     private var progressColor: Color {

@@ -408,7 +408,11 @@ class CameraViewModel: BaseViewModel {
                 }
 
                 // Configure photo output for maximum quality
-                if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+                if #available(iOS 16.0, *) {
+                    // Use maxPhotoDimensions for iOS 16+
+                    photoOutput.maxPhotoDimensions = device.activeFormat.supportedMaxPhotoDimensions.last ?? CMVideoDimensions(width: 4032, height: 3024)
+                } else {
+                    // Fallback for iOS 15
                     photoOutput.isHighResolutionCaptureEnabled = true
                 }
 
@@ -471,7 +475,15 @@ class CameraViewModel: BaseViewModel {
         let settings = AVCapturePhotoSettings()
 
         // Enable highest quality capture
-        settings.isHighResolutionPhotoEnabled = true
+        if #available(iOS 16.0, *) {
+            // Use maxPhotoDimensions for iOS 16+
+            if let device = currentDevice {
+                settings.maxPhotoDimensions = device.activeFormat.supportedMaxPhotoDimensions.last ?? CMVideoDimensions(width: 4032, height: 3024)
+            }
+        } else {
+            // Fallback for iOS 15
+            settings.isHighResolutionPhotoEnabled = true
+        }
 
         // Only set flash if device supports it
         if let device = currentDevice, device.hasFlash {

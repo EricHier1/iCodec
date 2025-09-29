@@ -20,6 +20,8 @@ struct CodecButton: View {
                     Text(title)
                         .font(buttonFont)
                         .fontWeight(.semibold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
             }
             .frame(height: buttonHeight)
