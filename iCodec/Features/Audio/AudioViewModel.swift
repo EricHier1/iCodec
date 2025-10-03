@@ -127,7 +127,13 @@ class AudioViewModel: BaseViewModel {
             // Use playback category for better streaming performance when not recording
             if !isRecording {
                 // Enable background audio playback
-                try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowAirPlay])
+                // Note: For iOS 18+, .playback category doesn't support .allowBluetoothHFP
+                // Use .allowBluetoothA2DP for Bluetooth audio output
+                if #available(iOS 10.0, *) {
+                    try session.setCategory(.playback, mode: .default, options: [.allowBluetoothA2DP, .allowAirPlay])
+                } else {
+                    try session.setCategory(.playback, mode: .default, options: .allowAirPlay)
+                }
             } else {
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP, .allowAirPlay])
             }
